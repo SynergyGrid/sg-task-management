@@ -1,4 +1,8 @@
-﻿const STORAGE_KEYS = {
+import { supabase } from './lib/supabaseClient';
+
+
+
+const STORAGE_KEYS = {
   tasks: "synergygrid.todoist.tasks.v2",
   projects: "synergygrid.todoist.projects.v2",
   sections: "synergygrid.todoist.sections.v1",
@@ -55,6 +59,11 @@ const state = {
   isQuickAddOpen: false,
   dialogAttachmentDraft: [],
   openSectionMenu: null,
+};
+
+const workspaceContext = {
+  id: null,
+  profile: null,
 };
 
 
@@ -148,6 +157,26 @@ const savePreferences = () =>
     showCompleted: state.showCompleted,
     metricsFilter: state.metricsFilter,
   });
+
+const applyStoredPreferences = () => {
+  const prefs = loadJSON(STORAGE_KEYS.preferences, {});
+  if (prefs.activeView?.type && prefs.activeView?.value) {
+    state.activeView = prefs.activeView;
+  }
+  if (prefs.viewMode === "board" || prefs.viewMode === "list") {
+    state.viewMode = prefs.viewMode;
+  }
+  if (typeof prefs.showCompleted === "boolean") {
+    state.showCompleted = prefs.showCompleted;
+  }
+  if (typeof prefs.metricsFilter === "string") {
+    state.metricsFilter = prefs.metricsFilter;
+  }
+
+  if (state.viewMode === "board" && state.activeView.type !== "project") {
+    state.viewMode = "list";
+  }
+};
 
 const generateId = (prefix) => {
   const fallback = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -255,6 +284,303 @@ const normaliseSettings = (settings = {}) => {
     },
   };
   return merged;
+};
+
+const getUserDisplayName = (user) =>
+  user?.user_metadata?.full_name?.trim() || user?.email?.split("@")[0] || "Workspace member";
+
+const getUserAvatar = (user) => user?.user_metadata?.avatar_url || defaultSettings().profile.photo;
+
+const mapProjectFromSupabase = (row) => ({
+  id: row.id,
+  name: row.name,
+  color: row.color || DEFAULT_PROJECT.color,
+  isDefault: Boolean(row.is_default),
+  createdAt: row.created_at,
+});
+
+const mapSectionFromSupabase = (row) => ({
+  id: row.id,
+  name: row.name,
+  projectId: row.project_id,
+  order: row.sort_order ?? 0,
+  createdAt: row.created_at,
+});
+
+const mapDepartmentFromSupabase = (row) => ({
+  id: row.id,
+  name: row.name,
+  color: row.color || "",
+  isDefault: Boolean(row.is_default),
+  createdAt: row.created_at,
+});
+
+const mapMemberFromSupabase = (row) => ({
+  id: row.id,
+  name: row.display_name || "",
+  departmentId: row.department_id || "",
+  title: row.title || "",
+  email: row.email || "",
+  avatarUrl: row.avatar_url || "",
+  createdAt: row.created_at,
+});
+
+const buildAttachmentIndex = (rows) =>
+  (rows ?? []).reduce((acc, row) => {
+    const existing = acc.get(row.task_id) ?? [];
+    existing.push({
+      id: row.id,
+      name: row.name || "",
+      type: row.mime_type || "",
+      size: row.size_bytes ?? 0,
+      storagePath: row.storage_path,
+      uploadedAt: row.uploaded_at,
+    });
+    acc.set(row.task_id, existing);
+    return acc;
+  }, new Map());
+
+const mapTaskFromSupabase = (row, attachmentIndex) => ({
+  id: row.id,
+  title: row.title,
+  description: row.description || "",
+  dueDate: row.due_date || "",
+  priority: row.priority || "medium",
+  projectId: row.project_id,
+  sectionId: row.section_id,
+  departmentId: row.department_id || "",
+  assigneeId: row.assignee_id || "",
+  attachments: attachmentIndex.get(row.id) || [],
+  completed: Boolean(row.completed),
+  completedAt: row.completed_at,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const ensureDefaultWorkspaceData = async (workspaceId, profileId, meta) => {
+  const projectsResponse = await supabase
+    .from("projects")
+    .select("id, is_default")
+    .eq("workspace_id", workspaceId)
+    .order("created_at", { ascending: true });
+  if (projectsResponse.error) throw projectsResponse.error;
+
+  let inboxProjectId =
+    projectsResponse.data?.find((row) => row.is_default)?.id ?? projectsResponse.data?.[0]?.id ?? null;
+
+  if (!inboxProjectId) {
+    const insertProject = await supabase
+      .from("projects")
+      .insert({
+        workspace_id: workspaceId,
+        name: DEFAULT_PROJECT.name,
+        color: DEFAULT_PROJECT.color,
+        is_default: true,
+        created_by: profileId,
+      })
+      .select("id")
+      .single();
+    if (insertProject.error) throw insertProject.error;
+
+    inboxProjectId = insertProject.data.id;
+
+    const sectionInsert = await supabase.from("sections").insert({
+      workspace_id: workspaceId,
+      project_id: inboxProjectId,
+      name: DEFAULT_SECTION_NAME,
+      sort_order: 0,
+      created_by: profileId,
+    });
+    if (sectionInsert.error) throw sectionInsert.error;
+  } else {
+    const sectionCheck = await supabase
+      .from("sections")
+      .select("id")
+      .eq("workspace_id", workspaceId)
+      .eq("project_id", inboxProjectId)
+      .limit(1);
+    if (sectionCheck.error) throw sectionCheck.error;
+    if (!sectionCheck.data?.length) {
+      const sectionInsert = await supabase.from("sections").insert({
+        workspace_id: workspaceId,
+        project_id: inboxProjectId,
+        name: DEFAULT_SECTION_NAME,
+        sort_order: 0,
+        created_by: profileId,
+      });
+      if (sectionInsert.error) throw sectionInsert.error;
+    }
+  }
+
+  const departmentsResponse = await supabase
+    .from("departments")
+    .select("id")
+    .eq("workspace_id", workspaceId)
+    .limit(1);
+  if (departmentsResponse.error) throw departmentsResponse.error;
+  if (!departmentsResponse.data?.length) {
+    const departmentInsert = await supabase.from("departments").insert({
+      workspace_id: workspaceId,
+      name: DEFAULT_DEPARTMENT.name,
+      color: null,
+      is_default: true,
+      created_by: profileId,
+    });
+    if (departmentInsert.error) throw departmentInsert.error;
+  }
+
+  const settingsResponse = await supabase
+    .from("settings")
+    .select("id")
+    .eq("workspace_id", workspaceId)
+    .eq("profile_id", profileId)
+    .maybeSingle();
+  if (settingsResponse.error) throw settingsResponse.error;
+
+  if (!settingsResponse.data) {
+    const defaults = defaultSettings();
+    const baseSettings = normaliseSettings({
+      profile: {
+        name: meta.displayName || defaults.profile.name,
+        photo: meta.avatarUrl || defaults.profile.photo,
+      },
+      theme: defaults.theme,
+    });
+
+    const insertSettings = await supabase
+      .from("settings")
+      .insert({
+        workspace_id: workspaceId,
+        profile_id: profileId,
+        data: baseSettings,
+      })
+      .select("id")
+      .single();
+    if (insertSettings.error) throw insertSettings.error;
+    workspaceContext.settingsId = insertSettings.data.id;
+  } else {
+    workspaceContext.settingsId = settingsResponse.data.id;
+  }
+};
+
+const ensureProfileAndWorkspace = async (user) => {
+  const displayName = getUserDisplayName(user);
+  const avatarUrl = getUserAvatar(user);
+
+  const profileResponse = await supabase
+    .from("profiles")
+    .upsert(
+      {
+        id: user.id,
+        full_name: displayName,
+        avatar_url: avatarUrl,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC",
+      },
+      { onConflict: "id" }
+    )
+    .select()
+    .single();
+
+  if (profileResponse.error) throw profileResponse.error;
+  const profile = profileResponse.data;
+
+  const membershipResponse = await supabase
+    .from("workspace_members")
+    .select("workspace_id")
+    .eq("profile_id", profile.id)
+    .limit(1);
+
+  if (membershipResponse.error) throw membershipResponse.error;
+
+  let workspaceId = membershipResponse.data?.[0]?.workspace_id ?? null;
+
+  if (!workspaceId) {
+    const workspaceResponse = await supabase
+      .from("workspaces")
+      .insert({
+        name: `${displayName}'s Workspace`,
+        created_by: profile.id,
+      })
+      .select("id")
+      .single();
+
+    if (workspaceResponse.error) throw workspaceResponse.error;
+
+    workspaceId = workspaceResponse.data.id;
+
+    const membershipInsert = await supabase.from("workspace_members").insert({
+      workspace_id: workspaceId,
+      profile_id: profile.id,
+      role: "owner",
+      invited_by: profile.id,
+    });
+
+    if (membershipInsert.error) throw membershipInsert.error;
+  }
+
+  workspaceContext.id = workspaceId;
+  workspaceContext.profile = profile;
+
+  await ensureDefaultWorkspaceData(workspaceId, profile.id, { displayName, avatarUrl });
+
+  return { workspaceId, profile, displayName, avatarUrl };
+};
+
+const fetchWorkspaceSnapshot = async (workspaceId, profileId) => {
+  const [
+    projectsResponse,
+    sectionsResponse,
+    tasksResponse,
+    membersResponse,
+    departmentsResponse,
+    attachmentsResponse,
+    settingsResponse,
+  ] = await Promise.all([
+    supabase.from("projects").select("*").eq("workspace_id", workspaceId).order("created_at", { ascending: true }),
+    supabase
+      .from("sections")
+      .select("*")
+      .eq("workspace_id", workspaceId)
+      .order("sort_order", { ascending: true }),
+    supabase.from("tasks").select("*").eq("workspace_id", workspaceId).order("created_at", { ascending: true }),
+    supabase.from("members").select("*").eq("workspace_id", workspaceId).order("created_at", { ascending: true }),
+    supabase.from("departments").select("*").eq("workspace_id", workspaceId).order("created_at", { ascending: true }),
+    supabase.from("attachments").select("*").eq("workspace_id", workspaceId),
+    supabase.from("settings").select("id, data").eq("workspace_id", workspaceId).eq("profile_id", profileId).maybeSingle(),
+  ]);
+
+  if (projectsResponse.error) throw projectsResponse.error;
+  if (sectionsResponse.error) throw sectionsResponse.error;
+  if (tasksResponse.error) throw tasksResponse.error;
+  if (membersResponse.error) throw membersResponse.error;
+  if (departmentsResponse.error) throw departmentsResponse.error;
+  if (attachmentsResponse.error) throw attachmentsResponse.error;
+  if (settingsResponse.error) throw settingsResponse.error;
+
+  const attachmentIndex = buildAttachmentIndex(attachmentsResponse.data || []);
+
+  const projects = (projectsResponse.data || []).map(mapProjectFromSupabase);
+  const sections = (sectionsResponse.data || []).map(mapSectionFromSupabase);
+  const departments = (departmentsResponse.data || []).map(mapDepartmentFromSupabase);
+  const members = (membersResponse.data || []).map(mapMemberFromSupabase);
+  const tasks = (tasksResponse.data || []).map((row) => mapTaskFromSupabase(row, attachmentIndex));
+
+  const settingsData = settingsResponse.data?.data
+    ? normaliseSettings(settingsResponse.data.data)
+    : normaliseSettings();
+
+  if (settingsResponse.data?.id) {
+    workspaceContext.settingsId = settingsResponse.data.id;
+  }
+
+  return {
+    projects,
+    sections,
+    tasks,
+    members,
+    departments,
+    settings: settingsData,
+  };
 };
 
 const hexToRgba = (hex, alpha) => {
@@ -1142,34 +1468,80 @@ const setActiveView = (type, value) => {
   savePreferences();
   render();
 };
-const addTask = (payload) => {
+const addTask = async (payload) => {
   const projectId = payload.projectId || "inbox";
   ensureSectionForProject(projectId);
+  const sectionId = payload.sectionId || getDefaultSectionId(projectId);
+  const attachments = Array.isArray(payload.attachments) ? payload.attachments : [];
 
-  const task = {
-    id: generateId("task"),
-    title: payload.title,
-    description: payload.description,
-    dueDate: payload.dueDate,
-    priority: payload.priority,
-    projectId,
-    sectionId: payload.sectionId || getDefaultSectionId(projectId),
-    departmentId: payload.departmentId || "",
-    assigneeId: payload.assigneeId || "",
-    attachments: Array.isArray(payload.attachments) ? payload.attachments : [],
-    completed: false,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+  const fallbackCreate = () => {
+    const now = new Date().toISOString();
+    const task = {
+      id: generateId("task"),
+      title: payload.title,
+      description: payload.description,
+      dueDate: payload.dueDate,
+      priority: payload.priority,
+      projectId,
+      sectionId,
+      departmentId: payload.departmentId || "",
+      assigneeId: payload.assigneeId || "",
+      attachments,
+      completed: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+    state.tasks.push(task);
+    saveTasks();
+    render();
+    return task;
   };
 
-  state.tasks.push(task);
-  saveTasks();
-  render();
+  if (!workspaceContext.id) {
+    return fallbackCreate();
+  }
+
+  try {
+    const now = new Date().toISOString();
+    const { data, error } = await supabase
+      .from("tasks")
+      .insert({
+        workspace_id: workspaceContext.id,
+        project_id: projectId,
+        section_id: sectionId,
+        title: payload.title,
+        description: payload.description || "",
+        due_date: payload.dueDate || null,
+        priority: payload.priority || "medium",
+        department_id: payload.departmentId || null,
+        assignee_id: payload.assigneeId || null,
+        completed: false,
+        completed_at: null,
+        created_by: workspaceContext.profile?.id ?? null,
+        updated_by: workspaceContext.profile?.id ?? null,
+        created_at: now,
+        updated_at: now,
+      })
+      .select("*")
+      .single();
+
+    if (error) throw error;
+
+    const task = mapTaskFromSupabase(data, new Map());
+    task.attachments = attachments;
+    state.tasks.push(task);
+    saveTasks();
+    render();
+    return task;
+  } catch (error) {
+    console.error("Failed to insert task via Supabase, using local fallback.", error);
+    return fallbackCreate();
+  }
 };
 
-const updateTask = (taskId, updates) => {
+const updateTask = async (taskId, updates) => {
   const index = state.tasks.findIndex((task) => task.id === taskId);
-  if (index === -1) return;
+  if (index === -1) return null;
   const previous = state.tasks[index];
   const nextProjectId = updates.projectId ?? previous.projectId;
   ensureSectionForProject(nextProjectId);
@@ -1182,19 +1554,107 @@ const updateTask = (taskId, updates) => {
     ? updates.attachments
     : previous.attachments || [];
 
-  state.tasks[index] = {
-    ...previous,
-    ...updates,
-    projectId: nextProjectId,
-    sectionId: nextSectionId,
-    attachments: nextAttachments,
-    updatedAt: new Date().toISOString(),
+  const updateState = (nextTask) => {
+    state.tasks[index] = nextTask;
+    saveTasks();
+    render();
+    return nextTask;
   };
-  saveTasks();
-  render();
+
+  const computeLocalTask = () => {
+    const completed = updates.completed ?? previous.completed;
+    let completedAt = previous.completedAt || null;
+    if (updates.completed === true && !previous.completed) {
+      completedAt = new Date().toISOString();
+    }
+    if (updates.completed === false) {
+      completedAt = null;
+    }
+
+    return {
+      ...previous,
+      ...updates,
+      projectId: nextProjectId,
+      sectionId: nextSectionId,
+      attachments: nextAttachments,
+      completed,
+      completedAt,
+      updatedAt: new Date().toISOString(),
+    };
+  };
+
+  if (!workspaceContext.id) {
+    return updateState(computeLocalTask());
+  }
+
+  try {
+    const completed = updates.completed ?? previous.completed;
+    let completedAt = previous.completedAt || null;
+    if (updates.completed === true && !previous.completed) {
+      completedAt = new Date().toISOString();
+    }
+    if (updates.completed === false) {
+      completedAt = null;
+    }
+
+    const nextTitle = updates.title ?? previous.title;
+    const nextDescription = updates.description ?? previous.description ?? "";
+    const nextDueDateRaw = updates.dueDate ?? previous.dueDate ?? null;
+    const nextDueDate = nextDueDateRaw === "" ? null : nextDueDateRaw;
+    const nextPriority = updates.priority ?? previous.priority ?? "medium";
+    const nextDepartmentIdValue =
+      updates.departmentId !== undefined ? updates.departmentId : previous.departmentId;
+    const nextDepartmentId = nextDepartmentIdValue ? nextDepartmentIdValue : null;
+    const nextAssigneeIdValue =
+      updates.assigneeId !== undefined ? updates.assigneeId : previous.assigneeId;
+    const nextAssigneeId = nextAssigneeIdValue ? nextAssigneeIdValue : null;
+
+    const { data, error } = await supabase
+      .from("tasks")
+      .update({
+        project_id: nextProjectId,
+        section_id: nextSectionId,
+        title: nextTitle,
+        description: nextDescription,
+        due_date: nextDueDate,
+        priority: nextPriority,
+        department_id: nextDepartmentId,
+        assignee_id: nextAssigneeId,
+        completed,
+        completed_at: completed ? completedAt ?? new Date().toISOString() : null,
+        updated_by: workspaceContext.profile?.id ?? null,
+      })
+      .eq("workspace_id", workspaceContext.id)
+      .eq("id", taskId)
+      .select("*")
+      .single();
+
+    if (error) throw error;
+
+    const attachmentIndex = new Map([[data.id, nextAttachments]]);
+    const task = mapTaskFromSupabase(data, attachmentIndex);
+    task.attachments = nextAttachments;
+    return updateState(task);
+  } catch (error) {
+    console.error("Failed to update task via Supabase, using local fallback.", error);
+    return updateState(computeLocalTask());
+  }
 };
 
-const removeTask = (taskId) => {
+const removeTask = async (taskId) => {
+  if (workspaceContext.id) {
+    try {
+      const { error } = await supabase
+        .from("tasks")
+        .delete()
+        .eq("workspace_id", workspaceContext.id)
+        .eq("id", taskId);
+      if (error) throw error;
+    } catch (error) {
+      console.error("Failed to remove task via Supabase, applying local removal.", error);
+    }
+  }
+
   state.tasks = state.tasks.filter((task) => task.id !== taskId);
   saveTasks();
   render();
@@ -1441,14 +1901,18 @@ const handleProjectClick = (event) => {
   setActiveView("project", button.dataset.project);
 };
 
-const handleTaskCheckboxChange = (event) => {
+const handleTaskCheckboxChange = async (event) => {
   if (event.target.type !== "checkbox") return;
   const item = event.target.closest(".task-item");
   if (!item) return;
-  updateTask(item.dataset.taskId, { completed: event.target.checked });
+  try {
+    await updateTask(item.dataset.taskId, { completed: event.target.checked });
+  } catch (error) {
+    console.error("Failed to toggle task completion.", error);
+  }
 };
 
-const handleTaskActionClick = (event) => {
+const handleTaskActionClick = async (event) => {
   const button = event.target.closest("[data-action]");
   if (!button) return;
   const action = button.dataset.action;
@@ -1460,7 +1924,13 @@ const handleTaskActionClick = (event) => {
     openTaskDialog(taskId);
   } else if (action === "delete") {
     const confirmed = window.confirm("Delete this task? This cannot be undone.");
-    if (confirmed) removeTask(taskId);
+    if (confirmed) {
+      try {
+        await removeTask(taskId);
+      } catch (error) {
+        console.error("Failed to remove task.", error);
+      }
+    }
   }
 };
 
@@ -1478,20 +1948,25 @@ const handleQuickAddSubmit = async (event) => {
   const sectionId = data.get("section") || getDefaultSectionId(projectId);
   const attachments = elements.quickAddAttachments ? await readFilesAsData(elements.quickAddAttachments.files) : [];
 
-  addTask({
-    title,
-    description: (data.get("description") ?? "").trim(),
-    dueDate: data.get("dueDate") || "",
-    priority: data.get("priority") || "medium",
-    projectId,
-    sectionId,
-    departmentId: data.get("department") || "",
-    assigneeId: data.get("assignee") || "",
-    attachments,
-  });
+  try {
+    await addTask({
+      title,
+      description: (data.get("description") ?? "").trim(),
+      dueDate: data.get("dueDate") || "",
+      priority: data.get("priority") || "medium",
+      projectId,
+      sectionId,
+      departmentId: data.get("department") || "",
+      assigneeId: data.get("assignee") || "",
+      attachments,
+    });
 
-  resetQuickAddForm();
-  closeQuickAddForm();
+    resetQuickAddForm();
+    closeQuickAddForm();
+  } catch (error) {
+    console.error("Failed to create task.", error);
+    elements.quickAddError.textContent = "Unable to create task. Please try again.";
+  }
 };
 
 const handleQuickAddCancel = () => {
@@ -1706,7 +2181,7 @@ const closeTaskDialog = () => {
   }
 };
 
-const handleDialogSubmit = (event) => {
+const handleDialogSubmit = async (event) => {
   event.preventDefault();
   if (!state.editingTaskId) return;
   const data = new FormData(elements.dialogForm);
@@ -1719,30 +2194,40 @@ const handleDialogSubmit = (event) => {
   const projectId = data.get("project") || "inbox";
   const sectionId = data.get("section") || getDefaultSectionId(projectId);
 
-  updateTask(state.editingTaskId, {
-    title,
-    description: (data.get("description") ?? "").trim(),
-    dueDate: data.get("dueDate") || "",
-    priority: data.get("priority") || "medium",
-    projectId,
-    sectionId,
-    departmentId: data.get("department") || "",
-    assigneeId: data.get("assignee") || "",
-    attachments: cloneAttachments(state.dialogAttachmentDraft),
-    completed: elements.dialogForm.completed.checked,
-  });
-  closeTaskDialog();
+  try {
+    await updateTask(state.editingTaskId, {
+      title,
+      description: (data.get("description") ?? "").trim(),
+      dueDate: data.get("dueDate") || "",
+      priority: data.get("priority") || "medium",
+      projectId,
+      sectionId,
+      departmentId: data.get("department") || "",
+      assigneeId: data.get("assignee") || "",
+      attachments: cloneAttachments(state.dialogAttachmentDraft),
+      completed: elements.dialogForm.completed.checked,
+    });
+    closeTaskDialog();
+  } catch (error) {
+    console.error("Failed to update task.", error);
+    window.alert("Unable to save changes. Please try again.");
+  }
 };
 
-const handleDialogClick = (event) => {
+const handleDialogClick = async (event) => {
   const action = event.target.dataset.action;
   if (action === "close") {
     closeTaskDialog();
   } else if (action === "delete" && state.editingTaskId) {
     const confirmed = window.confirm("Delete this task? This cannot be undone.");
     if (confirmed) {
-      removeTask(state.editingTaskId);
-      closeTaskDialog();
+      try {
+        await removeTask(state.editingTaskId);
+        closeTaskDialog();
+      } catch (error) {
+        console.error("Failed to delete task.", error);
+        window.alert("Unable to delete task. Please try again.");
+      }
     }
   } else if (action === "remove-dialog-attachment") {
     const attachmentId = event.target.dataset.attachmentId;
@@ -1954,7 +2439,7 @@ const handleBoardDragLeave = (event) => {
   event.currentTarget.classList.remove("drag-over");
 };
 
-const handleBoardDrop = (event) => {
+const handleBoardDrop = async (event) => {
   if (state.dragSectionId) return;
   event.preventDefault();
   const container = event.currentTarget;
@@ -1962,7 +2447,11 @@ const handleBoardDrop = (event) => {
   const taskId = state.dragTaskId || event.dataTransfer.getData("text/plain");
   container.classList.remove("drag-over");
   if (!sectionId || !taskId) return;
-  updateTask(taskId, { sectionId });
+  try {
+    await updateTask(taskId, { sectionId });
+  } catch (error) {
+    console.error("Failed to move task.", error);
+  }
 };
 
 const handleMembersFormSubmit = (event) => {
@@ -2008,7 +2497,7 @@ const handleDepartmentsFormClick = (event) => {
     removeDepartment(event.target.dataset.departmentId);
   }
 };
-const hydrateState = () => {
+const hydrateStateFromLocal = () => {
   state.tasks = loadJSON(STORAGE_KEYS.tasks, []);
   state.projects = loadJSON(STORAGE_KEYS.projects, []);
   state.sections = loadJSON(STORAGE_KEYS.sections, []);
@@ -2025,25 +2514,45 @@ const hydrateState = () => {
   saveSections();
   saveDepartments();
 
-  const prefs = loadJSON(STORAGE_KEYS.preferences, {});
-  if (prefs.activeView?.type && prefs.activeView?.value) {
-    state.activeView = prefs.activeView;
-  }
-  if (prefs.viewMode === "board" || prefs.viewMode === "list") {
-    state.viewMode = prefs.viewMode;
-  }
-  if (typeof prefs.showCompleted === "boolean") {
-    state.showCompleted = prefs.showCompleted;
-  }
-  if (typeof prefs.metricsFilter === "string") {
-    state.metricsFilter = prefs.metricsFilter;
+  applyStoredPreferences();
+};
+
+const hydrateState = async () => {
+  const user = window.currentUser;
+  if (!user) {
+    hydrateStateFromLocal();
+    return;
   }
 
-  if (state.viewMode === "board" && state.activeView.type !== "project") {
-    state.viewMode = "list";
+  try {
+    const { workspaceId, profile } = await ensureProfileAndWorkspace(user);
+    const snapshot = await fetchWorkspaceSnapshot(workspaceId, profile.id);
+
+    state.projects = snapshot.projects;
+    state.sections = snapshot.sections;
+    state.members = snapshot.members;
+    state.departments = snapshot.departments;
+    state.tasks = snapshot.tasks;
+    state.settings = snapshot.settings;
+
+    ensureDefaultProject();
+    ensureDefaultDepartment();
+    ensureAllProjectsHaveSections();
+    state.tasks.forEach(ensureTaskDefaults);
+
+    saveProjects();
+    saveSections();
+    saveMembers();
+    saveDepartments();
+    saveTasks();
+    saveJSON(STORAGE_KEYS.settings, state.settings);
+  } catch (error) {
+    console.error("Failed to load Supabase data, falling back to local cache.", error);
+    hydrateStateFromLocal();
+    return;
   }
 
-  applySettings();
+  applyStoredPreferences();
 };
 
 const registerEventListeners = () => {
@@ -2120,12 +2629,16 @@ const registerEventListeners = () => {
   window.addEventListener("storage", handleStorageEvent);
 };
 
-const init = () => {
-  hydrateState();
+const init = async () => {
+  await hydrateState();
   registerEventListeners();
   render();
 };
 
-document.addEventListener("DOMContentLoaded", init);
+document.addEventListener("DOMContentLoaded", () => {
+  init().catch((error) => {
+    console.error("Failed to initialise workspace", error);
+  });
+});
 
 
