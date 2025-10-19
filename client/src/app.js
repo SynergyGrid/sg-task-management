@@ -2635,10 +2635,16 @@ const init = async () => {
   render();
 };
 
-document.addEventListener("DOMContentLoaded", () => {
+const startApp = () => {
   init().catch((error) => {
     console.error("Failed to initialise workspace", error);
   });
-});
+};
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", startApp);
+} else {
+  startApp();
+}
 
 
