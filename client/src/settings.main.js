@@ -1,15 +1,12 @@
-import { requireSession } from './lib/authGuard';
+import { ensureSharedSession } from './lib/sharedSession';
 
 async function bootstrap() {
-  const session = await requireSession({
-    onSession(currentSession) {
-      window.currentUser = currentSession.user;
-    },
-  });
-
-  if (!session) return;
-
-  await import('./settings.js');
+  try {
+    await ensureSharedSession();
+    await import('./settings.js');
+  } catch (error) {
+    console.error('Failed to initialise shared session for settings', error);
+  }
 }
 
 bootstrap();
