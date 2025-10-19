@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TaskFlow Pro – Sign in</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body class="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center px-4">
+    <div class="w-full max-w-md">
+      <div class="glass-card text-slate-50">
+        <header class="space-y-2 text-center">
+          <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-white/10 text-lg font-semibold">
+            ST
+          </div>
+          <h1 class="text-2xl font-semibold">Welcome to TaskFlow Pro</h1>
+          <p class="text-sm text-slate-200/70">
+            Sign in to access your shared workspace and see live task updates with your team.
+          </p>
+        </header>
+
+        <form id="authForm" class="space-y-5 mt-8" novalidate>
+          <div class="space-y-4">
+            <label class="form-field">
+              <span class="field-label text-slate-100">Email</span>
+              <input
+                id="email"
+                type="email"
+                class="field-input bg-white/10 border-white/20 text-slate-100 placeholder:text-slate-200/50"
+                placeholder="you@company.com"
+                autocomplete="email"
+                required
+              />
+            </label>
+            <label class="form-field">
+              <span class="field-label text-slate-100">Password</span>
+              <input
+                id="password"
+                type="password"
+                class="field-input bg-white/10 border-white/20 text-slate-100 placeholder:text-slate-200/50"
+                placeholder="••••••••"
+                autocomplete="current-password"
+                minlength="6"
+                required
+              />
+            </label>
+          </div>
+
+          <p id="authMessage" class="text-sm text-slate-200/80" role="status"></p>
+
+          <button id="submitButton" type="submit" class="btn-primary w-full justify-center">
+            Continue
+          </button>
+        </form>
+
+        <footer class="mt-6 text-sm text-center text-slate-200/70">
+          <button id="toggleMode" class="font-medium text-white hover:text-blue-100 transition">
+            Need an account? Create one
+          </button>
+        </footer>
+      </div>
+    </div>
+
+    <script type="module" src="/src/auth.main.js"></script>
+  </body>
+</html>
