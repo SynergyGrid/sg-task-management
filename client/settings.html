@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TaskFlow Pro - Settings</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+<body class="min-h-screen bg-slate-50 text-slate-800">
+  <nav class="bg-white border-b border-slate-200">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        <div class="flex items-center space-x-3">
+          <a href="index.html" class="inline-flex items-center gap-2 text-slate-700 hover:text-slate-900 transition">
+            <div class="w-9 h-9 bg-gradient-to-br from-blue-500 to-teal-500 rounded-lg flex items-center justify-center text-white font-semibold">
+              ST
+            </div>
+            <span class="text-base font-semibold">TaskFlow Pro</span>
+          </a>
+          <span class="text-sm text-slate-400">Settings</span>
+        </div>
+        <a href="index.html" class="btn-secondary">Back to workspace</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+    <header class="text-center space-y-3">
+      <h1 class="text-3xl font-semibold text-slate-900">Workspace Settings</h1>
+      <p class="text-sm text-slate-500 max-w-2xl mx-auto">
+        Update your profile details and fine-tune the colours used for tasks and sections. Changes are saved locally and applied instantly across the workspace.
+      </p>
+    </header>
+
+    <section class="bg-white border border-slate-200 rounded-2xl shadow-sm">
+      <form id="settingsForm" class="divide-y divide-slate-100" novalidate>
+        <div class="p-6 space-y-6">
+          <div class="space-y-3">
+            <h2 class="text-lg font-semibold text-slate-900">Profile</h2>
+            <p class="text-sm text-slate-500">These details appear in the navigation and activity feed.</p>
+          </div>
+          <div class="grid gap-5 md:grid-cols-2">
+            <label class="form-field">
+              <span class="field-label">Display name</span>
+              <input id="profileName" type="text" class="field-input" placeholder="Your name" required />
+            </label>
+            <label class="form-field">
+              <span class="field-label">Profile photo URL</span>
+              <input id="profilePhoto" type="url" class="field-input" placeholder="https://..." required />
+            </label>
+          </div>
+
+          <div class="flex items-center gap-4 bg-slate-50 border border-slate-200 rounded-xl p-4">
+            <img id="profilePreviewAvatar" class="w-14 h-14 rounded-full object-cover border border-slate-200" alt="Profile preview" src="" />
+            <div>
+              <p id="profilePreviewName" class="font-medium text-slate-900"></p>
+              <p class="text-xs text-slate-500">Preview of how your profile appears in the workspace.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-6 space-y-6">
+          <div class="space-y-3">
+            <h2 class="text-lg font-semibold text-slate-900">Theme</h2>
+            <p class="text-sm text-slate-500">Choose colours for accents and priority levels. These update instantly.</p>
+          </div>
+
+          <div class="grid gap-5 md:grid-cols-2">
+            <label class="form-field">
+              <span class="field-label">Accent colour</span>
+              <input id="accentColor" type="color" class="field-input h-12" />
+            </label>
+          </div>
+
+          <div class="space-y-4">
+            <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Priority colours</h3>
+            <div class="grid gap-4 md:grid-cols-3">
+              <label class="form-field">
+                <span class="field-label">Critical</span>
+                <input id="priorityCritical" type="color" class="field-input h-12" />
+              </label>
+              <label class="form-field">
+                <span class="field-label">Very high</span>
+                <input id="priorityVeryHigh" type="color" class="field-input h-12" />
+              </label>
+              <label class="form-field">
+                <span class="field-label">High</span>
+                <input id="priorityHigh" type="color" class="field-input h-12" />
+              </label>
+              <label class="form-field">
+                <span class="field-label">Medium</span>
+                <input id="priorityMedium" type="color" class="field-input h-12" />
+              </label>
+              <label class="form-field">
+                <span class="field-label">Low</span>
+                <input id="priorityLow" type="color" class="field-input h-12" />
+              </label>
+              <label class="form-field">
+                <span class="field-label">Optional</span>
+                <input id="priorityOptional" type="color" class="field-input h-12" />
+              </label>
+            </div>
+
+            <div class="glass-card text-slate-900">
+              <p class="text-sm uppercase tracking-wide text-white/70 mb-1">Preview</p>
+              <p class="text-2xl font-semibold text-white mb-2">Accent & priority colours</p>
+              <div class="flex flex-wrap gap-2">
+                <span class="chip" data-preview-chip="critical">Critical</span>
+                <span class="chip" data-preview-chip="veryHigh">Very high</span>
+                <span class="chip" data-preview-chip="high">High</span>
+                <span class="chip" data-preview-chip="medium">Medium</span>
+                <span class="chip" data-preview-chip="low">Low</span>
+                <span class="chip" data-preview-chip="optional">Optional</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <p id="saveStatus" class="text-sm text-slate-500"></p>
+          <div class="flex items-center gap-3">
+            <button type="button" id="resetSettings" class="btn-secondary">Reset to defaults</button>
+            <button type="submit" class="btn-primary">Save settings</button>
+          </div>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <script type="module" src="/src/settings.main.js"></script>
+</body>
+</html>

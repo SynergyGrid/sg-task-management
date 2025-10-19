@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TaskFlow Pro - Synergy Tasks</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Optional visual libraries (placeholders for future enhancements) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js" defer></script>
+
+  <!-- Splide carousel (not used yet but kept for design parity) -->
+  <script src="https://cdn.jsdelivr.net/npm/@splidejs/splide@4.1.4/dist/js/splide.min.js" defer></script>
+  <link href="https://cdn.jsdelivr.net/npm/@splidejs/splide@4.1.4/dist/css/splide.min.css" rel="stylesheet" />
+
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body class="min-h-screen bg-slate-50 text-slate-800">
+  <div id="p5-background" class="fixed inset-0 -z-10 opacity-30"></div>
+
+  <!-- Navigation -->
+  <nav class="bg-white shadow-sm border-b border-slate-200 sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between items-center h-16">
+        <div class="flex items-center space-x-4">
+          <div class="flex items-center space-x-2">
+            <div class="w-9 h-9 bg-gradient-to-br from-blue-500 to-teal-500 rounded-lg flex items-center justify-center text-white font-semibold">
+              ST
+            </div>
+            <div>
+              <p class="text-lg font-semibold text-slate-900 leading-tight">TaskFlow Pro</p>
+              <p class="text-xs text-slate-500">Synergy Tasks workspace</p>
+            </div>
+          </div>
+          <ul id="viewList" class="flex flex-wrap items-center gap-2 ml-6 mt-4 md:mt-0 md:gap-2">
+            <li>
+              <button class="view-pill active" data-view="inbox">
+                Inbox
+                <span class="count-pill" data-count="inbox">0</span>
+              </button>
+            </li>
+            <li>
+              <button class="view-pill" data-view="today">
+                Today
+                <span class="count-pill" data-count="today">0</span>
+              </button>
+            </li>
+            <li>
+              <button class="view-pill" data-view="upcoming">
+                Upcoming
+                <span class="count-pill" data-count="upcoming">0</span>
+              </button>
+            </li>
+          </ul>
+          <div class="hidden md:flex items-center space-x-4 ml-6">
+            <a href="index.html" class="text-sm font-medium text-slate-500 hover:text-slate-900 transition">Workspace</a>
+            <a href="settings.html" class="text-sm font-medium text-slate-500 hover:text-slate-900 transition">Settings</a>
+          </div>
+        </div>
+        <div class="flex items-center space-x-4">
+          <label class="relative hidden md:block">
+            <span class="sr-only">Search tasks</span>
+            <input id="searchInput" type="search" placeholder="Search tasks" class="peer search-input" />
+            <span class="search-icon">
+              <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m21 21-4.35-4.35M18 10.5a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z"></path>
+              </svg>
+            </span>
+          </label>
+          <button id="exportTasks" class="nav-icon-btn" title="Export tasks">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m4 16 4 4 4-4m-4 4V4m7 4h4a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-4"></path>
+            </svg>
+          </button>
+          <button id="profile-btn" class="flex items-center space-x-2">
+            <img id="profileAvatar" src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=32&h=32&fit=crop&crop=face" alt="User Avatar" class="w-9 h-9 rounded-full object-cover border border-slate-200" />
+            <span id="profileNameDisplay" class="hidden md:block text-sm font-medium text-slate-700">Sarah Chen</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="relative overflow-hidden bg-gradient-to-br from-blue-500 to-teal-500 py-12 text-white">
+    <div class="absolute inset-0 opacity-10 bg-[url('https://images.unsplash.com/photo-1545239351-1141bd82e8a6?auto=format&fit=crop&w=1600&q=80')] bg-cover bg-center"></div>
+    <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="text-center max-w-3xl mx-auto">
+        <h1 class="text-3xl md:text-4xl font-bold mb-4 tracking-tight">Smart Task Prioritisation for Modern Teams</h1>
+        <p class="text-lg text-white/80">
+          Organise projects, manage departments, and collaborate efficiently with Synergy Tasks - all inside your browser.
+        </p>
+      </div>
+      <div class="max-w-3xl mx-auto mt-10">
+        <div class="glass-card flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <p class="text-sm uppercase tracking-wide text-white/70 mb-1">Active tasks</p>
+            <p class="text-4xl font-semibold" id="active-tasks">0</p>
+          </div>
+          <label class="flex items-center gap-2 text-sm font-medium text-white/80">
+            <span>View</span>
+            <select id="metricFilter" class="rounded-full border border-white/40 bg-white/15 px-3 py-2 text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-white/60">
+              <option value="all">All active tasks</option>
+              <option value="critical">Critical priority</option>
+              <option value="very-high">Very high priority</option>
+              <option value="high">High priority</option>
+              <option value="medium">Medium priority</option>
+              <option value="low">Low priority</option>
+              <option value="optional">Optional priority</option>
+              <option value="completed">Completed tasks</option>
+            </select>
+          </label>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Content -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <!-- Workspace column -->
+      <section class="lg:col-span-3 space-y-6">
+        <!-- Project tabs and controls -->
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm">
+          <div class="px-6 py-5 border-b border-slate-100 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 class="text-xl font-semibold text-slate-900">Workspace</h2>
+              <p class="text-sm text-slate-500" id="viewSubtitle">All unscheduled tasks live here.</p>
+            </div>
+            <div class="flex items-center flex-wrap gap-2">
+              <div class="inline-flex rounded-full border border-slate-200 bg-slate-50/80 p-1" role="toolbar" aria-label="View mode">
+                <button class="toggle-pill active" data-view-mode="list" aria-pressed="true">List</button>
+                <button class="toggle-pill" data-view-mode="board" aria-pressed="false">Board</button>
+              </div>
+              <button id="toggleQuickAdd" class="btn-primary" type="button">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v12m6-6H6"></path>
+                </svg>
+                Add Task
+              </button>
+            </div>
+          </div>
+
+          <div class="px-6 py-4 border-b border-slate-100 space-y-4">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div class="flex flex-wrap gap-3 items-center">
+                <label class="block lg:hidden">
+                  <span class="sr-only">Search tasks</span>
+                  <input id="searchInput-mobile" type="search" placeholder="Search tasks" class="search-input w-full" />
+                </label>
+                <div class="flex flex-wrap gap-2 items-center">
+                  <span class="text-xs uppercase tracking-wide text-slate-500">Projects:</span>
+                  <ul id="projectList" class="flex flex-wrap gap-2"></ul>
+                </div>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button id="addProject" class="chip-button">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v12m6-6H6"></path>
+                  </svg>
+                  Add Project
+                </button>
+                <button id="manageMembers" class="chip-button">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Zm-2 7H6a2 2 0 0 0-2 2v2h16v-2a2 2 0 0 0-2-2h-4Z"></path>
+                  </svg>
+                  Manage Members
+                </button>
+                <button id="manageDepartments" class="chip-button">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-2.8 0-5 1.57-5 3.5S9.2 15 12 15s5-1.57 5-3.5S14.8 8 12 8Zm0 0V5m0 3c3.33 0 6 1.79 6 4s-2.67 4-6 4c-3.33 0-6-1.79-6-4s2.67-4 6-4Z"></path>
+                  </svg>
+                  Manage Departments
+                </button>
+              </div>
+            </div>
+
+            <form id="quickAddForm" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 quick-add-card hidden" novalidate>
+              <div class="sm:col-span-2 lg:col-span-2 xl:col-span-3">
+                <label class="field-label">Title</label>
+                <input type="text" name="title" placeholder="Launch planning sync" maxlength="160" required class="field-input" />
+                <small class="text-xs text-rose-500" data-error-for="title"></small>
+              </div>
+              <div class="sm:col-span-2 lg:col-span-2 xl:col-span-3">
+                <label class="field-label">Description</label>
+                <textarea name="description" rows="1" placeholder="Context, blockers, next steps" class="field-input"></textarea>
+              </div>
+              <div>
+                <label class="field-label">Due</label>
+                <input type="date" name="dueDate" class="field-input" />
+              </div>
+              <div>
+                <label class="field-label">Priority</label>
+                <select name="priority" class="field-input">
+                  <option value="critical">Critical</option>
+                  <option value="very-high">Very high</option>
+                  <option value="high">High</option>
+                  <option value="medium" selected>Medium</option>
+                  <option value="low">Low</option>
+                  <option value="optional">Optional</option>
+                </select>
+              </div>
+              <div>
+                <label class="field-label">Project</label>
+                <select name="project" class="field-input"></select>
+              </div>
+              <div>
+                <label class="field-label">Section</label>
+                <select name="section" class="field-input"></select>
+              </div>
+              <div>
+                <label class="field-label">Department</label>
+                <select name="department" class="field-input"></select>
+              </div>
+              <div>
+                <label class="field-label">Member</label>
+                <select name="assignee" class="field-input"></select>
+              </div>
+              <div class="sm:col-span-2 lg:col-span-3 xl:col-span-3">
+                <label class="field-label">Attachments</label>
+                <input type="file" name="attachments" multiple class="field-input" />
+                <ul class="attachment-list" data-attachment-list></ul>
+              </div>
+              <div class="sm:col-span-2 lg:col-span-3 xl:col-span-6 flex justify-end items-center gap-3">
+                <p class="quick-add-error flex-1 text-sm text-rose-500" role="alert"></p>
+                <button type="button" class="btn-secondary" data-action="cancel">Cancel</button>
+                <button type="submit" class="btn-primary">Add task</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div id="sectionActions" class="flex justify-end" hidden>
+          <button id="addSection" class="chip-button">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v12m6-6H6"></path>
+            </svg>
+            Add section
+          </button>
+        </div>
+
+        <section id="boardView" class="space-y-4" hidden>
+          <div id="boardColumns" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4" role="list"></div>
+          <p id="boardEmptyState" class="empty-state" hidden>Switch to a project to start using the board view.</p>
+        </section>
+
+        <section id="listView" class="space-y-6">
+          <div class="bg-white border border-slate-200 rounded-2xl shadow-sm">
+            <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h3 class="text-base font-semibold text-slate-900" id="viewTitle">Inbox</h3>
+              <button id="toggleCompleted" class="btn-secondary btn-small">Show completed</button>
+            </div>
+            <div class="px-6 py-5 space-y-5">
+              <ul id="taskList" class="task-list" aria-live="polite"></ul>
+              <p id="emptyState" class="empty-state" hidden>No tasks here yet. Add one to get started.</p>
+            </div>
+          </div>
+
+          <div class="bg-white border border-slate-200 rounded-2xl shadow-sm">
+            <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h3 class="text-base font-semibold text-slate-900">Completed</h3>
+              <span class="text-xs font-medium uppercase tracking-wide text-slate-500">History</span>
+            </div>
+            <div class="px-6 py-5">
+              <ul id="completedList" class="task-list completed hidden" aria-live="polite"></ul>
+              <p class="text-sm text-slate-500" data-empty-completed hidden>No completed tasks yet.</p>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <!-- Sidebar -->
+      <aside class="space-y-6">
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+          <h4 class="text-sm font-semibold uppercase tracking-wide text-slate-500 mb-4">Recent activity</h4>
+          <div id="activity-feed" class="space-y-3 text-sm text-slate-600"></div>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <!-- Task dialog -->
+  <dialog id="taskDialog" class="modal">
+    <form id="dialogForm" method="dialog" class="modal-card">
+      <header class="modal-header">
+        <h2 class="text-lg font-semibold text-slate-900">Edit task</h2>
+        <button type="button" class="ghost-button small" data-action="close">Close</button>
+      </header>
+      <div class="modal-body space-y-4">
+        <label class="form-field">
+          <span class="field-label">Title</span>
+          <input type="text" name="title" required maxlength="160" class="field-input" />
+        </label>
+        <label class="form-field">
+          <span class="field-label">Description</span>
+          <textarea name="description" rows="4" class="field-input"></textarea>
+        </label>
+        <div class="form-row">
+          <label class="form-field">
+            <span class="field-label">Due date</span>
+            <input type="date" name="dueDate" class="field-input" />
+          </label>
+          <label class="form-field">
+            <span class="field-label">Priority</span>
+            <select name="priority" class="field-input">
+              <option value="critical">Critical</option>
+              <option value="very-high">Very high</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+              <option value="optional">Optional</option>
+            </select>
+          </label>
+        </div>
+        <label class="form-field">
+          <span class="field-label">Section</span>
+          <select name="section" class="field-input"></select>
+        </label>
+        <div class="form-row">
+          <label class="form-field">
+            <span class="field-label">Department</span>
+            <select name="department" class="field-input"></select>
+          </label>
+          <label class="form-field">
+            <span class="field-label">Member</span>
+            <select name="assignee" class="field-input"></select>
+          </label>
+        </div>
+        <label class="form-field">
+          <span class="field-label">Attachments</span>
+          <input type="file" name="attachments" multiple class="field-input" />
+        </label>
+        <ul class="attachment-list" data-dialog-attachment-list></ul>
+        <label class="form-field">
+          <span class="field-label">Project</span>
+          <select name="project" class="field-input"></select>
+        </label>
+        <label class="checkbox-field">
+          <input type="checkbox" name="completed" />
+          <span>Mark as completed</span>
+        </label>
+      </div>
+      <footer class="modal-footer">
+        <button class="ghost-button danger" data-action="delete" type="button">Delete</button>
+        <button class="btn-primary" type="submit">Save changes</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- Task item template -->
+  <template id="taskItemTemplate">
+    <li class="task-item task-card">
+      <label class="task-checkbox">
+        <input type="checkbox" aria-label="Mark task complete" />
+        <span class="checkbox-indicator" aria-hidden="true"></span>
+      </label>
+      <div class="task-content">
+        <p class="task-title text-slate-900 font-medium"></p>
+        <p class="task-meta text-sm text-slate-500 flex flex-wrap gap-2"></p>
+      </div>
+      <div class="task-actions flex items-center gap-2">
+        <button type="button" class="chip-button" data-action="edit">Edit</button>
+        <button type="button" class="chip-button danger" data-action="delete">Delete</button>
+      </div>
+    </li>
+  </template>
+
+  <!-- Project pill template -->
+  <template id="projectItemTemplate">
+    <li>
+      <button class="project-pill" data-project="">
+        <span class="dot" aria-hidden="true"></span>
+        <span class="label"></span>
+        <span class="count">0</span>
+      </button>
+    </li>
+  </template>
+
+  <!-- Members dialog -->
+  <dialog id="membersDialog" class="modal">
+    <form id="membersForm" method="dialog" class="modal-card max-w-xl">
+      <header class="modal-header">
+        <h2 class="text-lg font-semibold text-slate-900">Manage members</h2>
+        <button type="button" class="ghost-button small" data-action="close">Close</button>
+      </header>
+      <div class="modal-body manage-body">
+        <ul id="memberList" class="manage-list" aria-live="polite"></ul>
+        <div class="manage-form">
+          <label class="form-field">
+            <span class="field-label">Name</span>
+            <input type="text" name="memberName" placeholder="Full name" required class="field-input" />
+          </label>
+          <label class="form-field">
+            <span class="field-label">Department</span>
+            <select name="memberDepartment" class="field-input"></select>
+          </label>
+          <div class="form-actions">
+            <button class="btn-primary" type="submit" data-action="add-member">Add member</button>
+          </div>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Departments dialog -->
+  <dialog id="departmentsDialog" class="modal">
+    <form id="departmentsForm" method="dialog" class="modal-card max-w-lg">
+      <header class="modal-header">
+        <h2 class="text-lg font-semibold text-slate-900">Manage departments</h2>
+        <button type="button" class="ghost-button small" data-action="close">Close</button>
+      </header>
+      <div class="modal-body manage-body">
+        <ul id="departmentList" class="manage-list" aria-live="polite"></ul>
+        <div class="manage-form">
+          <label class="form-field">
+            <span class="field-label">Name</span>
+            <input type="text" name="departmentName" placeholder="Department name" required class="field-input" />
+          </label>
+          <div class="form-actions">
+            <button class="btn-primary" type="submit" data-action="add-department">Add department</button>
+          </div>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
