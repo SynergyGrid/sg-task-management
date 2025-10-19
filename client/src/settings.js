@@ -1,6 +1,12 @@
+import { db } from './lib/firebaseClient';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+
 const STORAGE_KEYS = {
   settings: "synergygrid.todoist.settings.v1",
 };
+
+const WORKSPACE_ID = import.meta.env.VITE_FIREBASE_WORKSPACE_ID ?? 'default';
+const workspaceRef = doc(db, 'workspaces', WORKSPACE_ID);
 
 const defaultSettings = () => ({
   profile: {
@@ -54,7 +60,7 @@ const hexToRgba = (hex, alpha) => {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
-const loadSettings = () => {
+const loadLocalSettings = () => {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEYS.settings);
     if (!raw) return defaultSettings();
@@ -64,8 +70,44 @@ const loadSettings = () => {
   }
 };
 
-const saveSettings = (settings) => {
-  window.localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(settings));
+const saveLocalSettings = (settings) => {
+  try {
+    window.localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(settings));
+  } catch {
+    // ignore localStorage errors
+  }
+};
+
+const saveSettingsRemote = async (settings) => {
+  try {
+    await setDoc(
+      workspaceRef,
+      {
+        settings,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true },
+    );
+  } catch (error) {
+    console.error('Failed to save settings to Firestore', error);
+  }
+};
+
+const fetchRemoteSettings = async () => {
+  try {
+    const snapshot = await getDoc(workspaceRef);
+    if (snapshot.exists()) {
+      const remoteSettings = snapshot.data().settings;
+      if (remoteSettings) {
+        return normaliseSettings(remoteSettings);
+      }
+    } else {
+      await setDoc(workspaceRef, { settings: defaultSettings() }, { merge: true });
+    }
+  } catch (error) {
+    console.error('Failed to load settings from Firestore', error);
+  }
+  return null;
 };
 
 const elements = {
@@ -86,7 +128,7 @@ const elements = {
   saveStatus: document.getElementById("saveStatus"),
 };
 
-let draft = normaliseSettings(loadSettings());
+let draft = normaliseSettings(loadLocalSettings());
 
 const applyThemePreview = (settings) => {
   const root = document.documentElement;
@@ -192,22 +234,34 @@ const showStatus = (message, tone = "success") => {
   }, 3500);
 };
 
-elements.form.addEventListener("submit", (event) => {
+elements.form.addEventListener("submit", async (event) => {
   event.preventDefault();
   draft = normaliseSettings(draft);
-  saveSettings(draft);
+  saveLocalSettings(draft);
+  await saveSettingsRemote(draft);
   updatePreview();
   showStatus("Settings saved. Refresh your workspace to apply.", "success");
 });
 
 elements.form.addEventListener("input", handleInputChange);
 
-elements.resetButton.addEventListener("click", () => {
+elements.resetButton.addEventListener("click", async () => {
   draft = normaliseSettings(defaultSettings());
   populateForm(draft);
   updatePreview();
+  saveLocalSettings(draft);
+  await saveSettingsRemote(draft);
   showStatus("Settings reset to defaults.", "success");
 });
 
 populateForm(draft);
 updatePreview();
+
+fetchRemoteSettings().then((remote) => {
+  if (remote) {
+    draft = remote;
+    populateForm(draft);
+    updatePreview();
+    saveLocalSettings(draft);
+  }
+});
