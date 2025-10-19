@@ -13,10 +13,25 @@ async function bootstrap() {
   await import('./app.js');
 
   const profileButton = document.getElementById('profile-btn');
-  profileButton?.addEventListener('click', async (event) => {
-    event.preventDefault();
-    await supabase.auth.signOut();
-  });
+  const signOutBtn = document.getElementById('signOutBtn');
+
+  const handleSignOut = async (event) => {
+    event?.preventDefault?.();
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.warn('Supabase signOut warning:', error.message);
+      }
+    } catch (error) {
+      console.error('Failed to sign out', error);
+      window.alert('Unable to sign out. Redirecting to login.');
+    } finally {
+      window.location.href = '/auth.html?message=signed_out';
+    }
+  };
+
+  profileButton?.addEventListener('click', handleSignOut);
+  signOutBtn?.addEventListener('click', handleSignOut);
 }
 
 bootstrap();
