@@ -1660,7 +1660,7 @@ const removeTask = async (taskId) => {
   render();
 };
 
-const createProject = (name) => {
+const createProject = async (name) => {
   const trimmed = name.trim();
   if (!trimmed) return;
   const exists = state.projects.some(
@@ -1670,88 +1670,267 @@ const createProject = (name) => {
     window.alert("A project with this name already exists.");
     return;
   }
-  const project = {
-    id: generateId("project"),
-    name: trimmed,
-    color: pickProjectColor(state.projects.length),
-    createdAt: new Date().toISOString(),
+  const fallbackCreate = () => {
+    const project = {
+      id: generateId("project"),
+      name: trimmed,
+      color: pickProjectColor(state.projects.length),
+      createdAt: new Date().toISOString(),
+    };
+    state.projects.push(project);
+    saveProjects();
+    ensureSectionForProject(project.id);
+    saveSections();
+    setActiveView("project", project.id);
+    return project;
   };
-  state.projects.push(project);
-  saveProjects();
-  ensureSectionForProject(project.id);
-  saveSections();
-  setActiveView("project", project.id);
+
+  if (!workspaceContext.id) {
+    return fallbackCreate();
+  }
+
+  try {
+    const color = pickProjectColor(state.projects.length);
+    const { data, error } = await supabase
+      .from("projects")
+      .insert({
+        workspace_id: workspaceContext.id,
+        name: trimmed,
+        color,
+        is_default: false,
+        created_by: workspaceContext.profile?.id ?? null,
+      })
+      .select("*")
+      .single();
+
+    if (error) throw error;
+
+    const project = mapProjectFromSupabase(data);
+    state.projects.push(project);
+    saveProjects();
+
+    try {
+      const sectionResult = await supabase
+        .from("sections")
+        .insert({
+          workspace_id: workspaceContext.id,
+          project_id: project.id,
+          name: DEFAULT_SECTION_NAME,
+          sort_order: 0,
+          created_by: workspaceContext.profile?.id ?? null,
+        })
+        .select("*")
+        .single();
+      if (sectionResult.error) throw sectionResult.error;
+      const section = mapSectionFromSupabase(sectionResult.data);
+      state.sections.push(section);
+      saveSections();
+    } catch (sectionError) {
+      console.error("Failed to create default section for project.", sectionError);
+    }
+
+    setActiveView("project", project.id);
+    return project;
+  } catch (error) {
+    console.error("Failed to create project via Supabase, using local fallback.", error);
+    return fallbackCreate();
+  }
 };
 
-const createSection = (projectId, name) => {
+const createSection = async (projectId, name) => {
   const trimmed = name.trim();
   if (!trimmed) return null;
   const sections = getSectionsForProject(projectId);
-  const section = {
-    id: generateId("section"),
-    name: trimmed,
-    projectId,
-    order: sections.length,
-    createdAt: new Date().toISOString(),
+  const fallbackCreate = () => {
+    const section = {
+      id: generateId("section"),
+      name: trimmed,
+      projectId,
+      order: sections.length,
+      createdAt: new Date().toISOString(),
+    };
+    state.sections.push(section);
+    saveSections();
+    return section;
   };
-  state.sections.push(section);
-  saveSections();
-  return section;
+
+  if (!workspaceContext.id) {
+    return fallbackCreate();
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("sections")
+      .insert({
+        workspace_id: workspaceContext.id,
+        project_id: projectId,
+        name: trimmed,
+        sort_order: sections.length,
+        created_by: workspaceContext.profile?.id ?? null,
+      })
+      .select("*")
+      .single();
+
+    if (error) throw error;
+
+    const section = mapSectionFromSupabase(data);
+    state.sections.push(section);
+    saveSections();
+    return section;
+  } catch (error) {
+    console.error("Failed to create section via Supabase, using local fallback.", error);
+    return fallbackCreate();
+  }
 };
 
-const deleteSection = (sectionId) => {
+const deleteSection = async (sectionId) => {
   const section = getSectionById(sectionId);
-  if (!section) return;
+  if (!section) return null;
 
   const sections = getSectionsForProject(section.projectId);
   if (sections.length <= 1) {
     window.alert("A project must have at least one section.");
-    return;
+    return null;
   }
 
-  const fallback = sections.find((entry) => entry.id !== sectionId)?.id;
-  state.tasks = state.tasks.map((task) =>
-    task.sectionId === sectionId ? { ...task, sectionId: fallback } : task
-  );
-  state.sections = state.sections.filter((entry) => entry.id !== sectionId);
+  const fallbackSection = sections.find((entry) => entry.id !== sectionId)?.id;
+  const applyLocalRemoval = () => {
+    state.tasks = state.tasks.map((task) =>
+      task.sectionId === sectionId ? { ...task, sectionId: fallbackSection } : task
+    );
+    state.sections = state.sections.filter((entry) => entry.id !== sectionId);
+    saveSections();
+    saveTasks();
+    render();
+  };
 
-  saveSections();
-  saveTasks();
-  render();
+  if (!workspaceContext.id) {
+    applyLocalRemoval();
+    return fallbackSection;
+  }
+
+  try {
+    if (fallbackSection) {
+      const { error: reassignError } = await supabase
+        .from("tasks")
+        .update({ section_id: fallbackSection })
+        .eq("workspace_id", workspaceContext.id)
+        .eq("section_id", sectionId);
+      if (reassignError) throw reassignError;
+    }
+
+    const { error } = await supabase
+      .from("sections")
+      .delete()
+      .eq("workspace_id", workspaceContext.id)
+      .eq("id", sectionId);
+    if (error) throw error;
+
+    applyLocalRemoval();
+    return fallbackSection;
+  } catch (error) {
+    console.error("Failed to delete section via Supabase, applying local removal.", error);
+    applyLocalRemoval();
+    return fallbackSection;
+  }
 };
 
-const addMember = (name, departmentId) => {
+const addMember = async (name, departmentId) => {
   const trimmed = name.trim();
   if (!trimmed) return;
-  const member = {
-    id: generateId("member"),
-    name: trimmed,
-    departmentId: departmentId || "",
-    createdAt: new Date().toISOString(),
+  const fallbackAdd = () => {
+    const member = {
+      id: generateId("member"),
+      name: trimmed,
+      departmentId: departmentId || "",
+      title: "",
+      email: "",
+      avatarUrl: "",
+      createdAt: new Date().toISOString(),
+    };
+    state.members.push(member);
+    saveMembers();
+    updateTeamSelects();
+    renderMemberList();
+    renderTeamStatus();
+    updateDashboardMetrics();
+    return member;
   };
-  state.members.push(member);
-  saveMembers();
-  updateTeamSelects();
-  renderMemberList();
-  renderTeamStatus();
-  updateDashboardMetrics();
+
+  if (!workspaceContext.id) {
+    return fallbackAdd();
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("members")
+      .insert({
+        workspace_id: workspaceContext.id,
+        display_name: trimmed,
+        department_id: departmentId || null,
+        profile_id: null,
+        title: null,
+        email: null,
+        avatar_url: null,
+      })
+      .select("*")
+      .single();
+
+    if (error) throw error;
+
+    const member = mapMemberFromSupabase(data);
+    state.members.push(member);
+    saveMembers();
+    updateTeamSelects();
+    renderMemberList();
+    renderTeamStatus();
+    updateDashboardMetrics();
+    return member;
+  } catch (error) {
+    console.error("Failed to add member via Supabase, using local fallback.", error);
+    return fallbackAdd();
+  }
 };
 
-const removeMember = (memberId) => {
-  state.members = state.members.filter((member) => member.id !== memberId);
-  state.tasks = state.tasks.map((task) =>
-    task.assigneeId === memberId ? { ...task, assigneeId: "" } : task
-  );
-  saveMembers();
-  saveTasks();
-  updateTeamSelects();
-  renderMemberList();
-  renderTeamStatus();
-  updateDashboardMetrics();
-  renderTasks();
+const removeMember = async (memberId) => {
+  const applyLocalRemoval = () => {
+    state.members = state.members.filter((member) => member.id !== memberId);
+    state.tasks = state.tasks.map((task) =>
+      task.assigneeId === memberId ? { ...task, assigneeId: "" } : task
+    );
+    saveMembers();
+    saveTasks();
+    updateTeamSelects();
+    renderMemberList();
+    renderTeamStatus();
+    updateDashboardMetrics();
+    renderTasks();
+  };
+
+  if (workspaceContext.id) {
+    try {
+      const { error: clearTasksError } = await supabase
+        .from("tasks")
+        .update({ assignee_id: null })
+        .eq("workspace_id", workspaceContext.id)
+        .eq("assignee_id", memberId);
+      if (clearTasksError) throw clearTasksError;
+
+      const { error } = await supabase
+        .from("members")
+        .delete()
+        .eq("workspace_id", workspaceContext.id)
+        .eq("id", memberId);
+      if (error) throw error;
+    } catch (error) {
+      console.error("Failed to remove member via Supabase, applying local removal.", error);
+    }
+  }
+
+  applyLocalRemoval();
 };
 
-const addDepartment = (name) => {
+const addDepartment = async (name) => {
   const trimmed = name.trim();
   if (!trimmed) return;
   const exists = state.departments.some(
@@ -1761,42 +1940,109 @@ const addDepartment = (name) => {
     window.alert("A department with this name already exists.");
     return;
   }
-  const department = {
-    id: generateId("department"),
-    name: trimmed,
-    createdAt: new Date().toISOString(),
+  const fallbackAdd = () => {
+    const department = {
+      id: generateId("department"),
+      name: trimmed,
+      isDefault: false,
+      createdAt: new Date().toISOString(),
+    };
+    state.departments.push(department);
+    saveDepartments();
+    updateTeamSelects();
+    renderDepartmentList();
+    renderTeamStatus();
+    updateDashboardMetrics();
+    return department;
   };
-  state.departments.push(department);
-  saveDepartments();
-  updateTeamSelects();
-  renderDepartmentList();
-  renderTeamStatus();
-  updateDashboardMetrics();
+
+  if (!workspaceContext.id) {
+    return fallbackAdd();
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("departments")
+      .insert({
+        workspace_id: workspaceContext.id,
+        name: trimmed,
+        color: null,
+        is_default: false,
+        created_by: workspaceContext.profile?.id ?? null,
+      })
+      .select("*")
+      .single();
+
+    if (error) throw error;
+
+    const department = mapDepartmentFromSupabase(data);
+    state.departments.push(department);
+    saveDepartments();
+    updateTeamSelects();
+    renderDepartmentList();
+    renderTeamStatus();
+    updateDashboardMetrics();
+    return department;
+  } catch (error) {
+    console.error("Failed to add department via Supabase, using local fallback.", error);
+    return fallbackAdd();
+  }
 };
 
-const removeDepartment = (departmentId) => {
+const removeDepartment = async (departmentId) => {
   const department = getDepartmentById(departmentId);
   if (!department || department.isDefault) {
     window.alert("The default department cannot be removed.");
     return;
   }
 
-  state.departments = state.departments.filter((entry) => entry.id !== departmentId);
-  state.members = state.members.map((member) =>
-    member.departmentId === departmentId ? { ...member, departmentId: "" } : member
-  );
-  state.tasks = state.tasks.map((task) =>
-    task.departmentId === departmentId ? { ...task, departmentId: "" } : task
-  );
-  saveDepartments();
-  saveMembers();
-  saveTasks();
-  updateTeamSelects();
-  renderDepartmentList();
-  renderMemberList();
-  renderTeamStatus();
-  updateDashboardMetrics();
-  renderTasks();
+  const applyLocalRemoval = () => {
+    state.departments = state.departments.filter((entry) => entry.id !== departmentId);
+    state.members = state.members.map((member) =>
+      member.departmentId === departmentId ? { ...member, departmentId: "" } : member
+    );
+    state.tasks = state.tasks.map((task) =>
+      task.departmentId === departmentId ? { ...task, departmentId: "" } : task
+    );
+    saveDepartments();
+    saveMembers();
+    saveTasks();
+    updateTeamSelects();
+    renderDepartmentList();
+    renderMemberList();
+    renderTeamStatus();
+    updateDashboardMetrics();
+    renderTasks();
+  };
+
+  if (workspaceContext.id) {
+    try {
+      const { error: updateMembersError } = await supabase
+        .from("members")
+        .update({ department_id: null })
+        .eq("workspace_id", workspaceContext.id)
+        .eq("department_id", departmentId);
+      if (updateMembersError) throw updateMembersError;
+
+      const { error: updateTasksError } = await supabase
+        .from("tasks")
+        .update({ department_id: null })
+        .eq("workspace_id", workspaceContext.id)
+        .eq("department_id", departmentId);
+      if (updateTasksError) throw updateTasksError;
+
+      const { error } = await supabase
+        .from("departments")
+        .delete()
+        .eq("workspace_id", workspaceContext.id)
+        .eq("id", departmentId);
+      if (error) throw error;
+    } catch (error) {
+      console.error("Failed to remove department via Supabase, applying local removal.", error);
+    }
+  }
+
+  applyLocalRemoval();
 };
 
 const renderMemberList = () => {
@@ -2084,10 +2330,14 @@ const handleToggleCompleted = () => {
   renderTasks();
 };
 
-const handleAddProject = () => {
+const handleAddProject = async () => {
   const name = window.prompt("Project name");
   if (!name) return;
-  createProject(name);
+  try {
+    await createProject(name);
+  } catch (error) {
+    console.error("Failed to add project.", error);
+  }
 };
 
 const handleExport = () => {
@@ -2257,19 +2507,23 @@ const handleQuickAddDepartmentChange = () => {
   populateMemberOptions(elements.quickAddAssignee, "", departmentId);
 };
 
-const handleAddSection = () => {
+const handleAddSection = async () => {
   if (state.activeView.type !== "project") {
     window.alert("Select a project before adding sections.");
     return;
   }
   const name = window.prompt("Section name");
   if (!name) return;
-  createSection(state.activeView.value, name);
-  saveSections();
-  render();
+  try {
+    await createSection(state.activeView.value, name);
+    saveSections();
+    render();
+  } catch (error) {
+    console.error("Failed to add section.", error);
+  }
 };
 
-const handleBoardClick = (event) => {
+const handleBoardClick = async (event) => {
   const menuTrigger = event.target.closest('[data-action="section-menu"]');
   if (menuTrigger) {
     toggleSectionMenu(menuTrigger.dataset.sectionId, menuTrigger);
@@ -2281,7 +2535,11 @@ const handleBoardClick = (event) => {
     closeSectionMenu();
     const sectionId = deleteButton.dataset.sectionId;
     if (sectionId) {
-      deleteSection(sectionId);
+      try {
+        await deleteSection(sectionId);
+      } catch (error) {
+        console.error("Failed to delete section.", error);
+      }
     }
   }
 };
@@ -2454,47 +2712,63 @@ const handleBoardDrop = async (event) => {
   }
 };
 
-const handleMembersFormSubmit = (event) => {
+const handleMembersFormSubmit = async (event) => {
   event.preventDefault();
   const action = event.submitter?.dataset.action;
   if (action === "add-member") {
     const name = elements.membersForm.memberName.value;
     const departmentId = elements.membersForm.memberDepartment.value;
-    addMember(name, departmentId);
-    elements.membersForm.reset();
-    elements.membersForm.memberDepartment.value = DEFAULT_DEPARTMENT.id;
+    try {
+      await addMember(name, departmentId);
+      elements.membersForm.reset();
+      elements.membersForm.memberDepartment.value = DEFAULT_DEPARTMENT.id;
+    } catch (error) {
+      console.error("Failed to add member from form.", error);
+    }
   }
 };
 
-const handleMembersFormClick = (event) => {
+const handleMembersFormClick = async (event) => {
   const action = event.target.dataset.action;
   if (action === "close") {
     closeMembersDialog();
     return;
   }
   if (action === "remove-member") {
-    removeMember(event.target.dataset.memberId);
+    try {
+      await removeMember(event.target.dataset.memberId);
+    } catch (error) {
+      console.error("Failed to remove member.", error);
+    }
   }
 };
 
-const handleDepartmentsFormSubmit = (event) => {
+const handleDepartmentsFormSubmit = async (event) => {
   event.preventDefault();
   const action = event.submitter?.dataset.action;
   if (action === "add-department") {
     const name = elements.departmentsForm.departmentName.value;
-    addDepartment(name);
-    elements.departmentsForm.reset();
+    try {
+      await addDepartment(name);
+      elements.departmentsForm.reset();
+    } catch (error) {
+      console.error("Failed to add department.", error);
+    }
   }
 };
 
-const handleDepartmentsFormClick = (event) => {
+const handleDepartmentsFormClick = async (event) => {
   const action = event.target.dataset.action;
   if (action === "close") {
     closeDepartmentsDialog();
     return;
   }
   if (action === "remove-department") {
-    removeDepartment(event.target.dataset.departmentId);
+    try {
+      await removeDepartment(event.target.dataset.departmentId);
+    } catch (error) {
+      console.error("Failed to remove department.", error);
+    }
   }
 };
 const hydrateStateFromLocal = () => {
