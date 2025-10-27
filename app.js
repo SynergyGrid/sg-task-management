@@ -1,8 +1,6 @@
+import JSZip from 'jszip';
 import { db } from './lib/firebaseClient';
 import { doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore';
-
-
-
 const STORAGE_KEYS = {
   tasks: "synergygrid.todoist.tasks.v2",
   projects: "synergygrid.todoist.projects.v2",
@@ -13,7 +11,16 @@ const STORAGE_KEYS = {
   preferences: "synergygrid.todoist.preferences.v2",
   settings: "synergygrid.todoist.settings.v1",
   userguide: "synergygrid.todoist.userguide.v1",
+  imports: "synergygrid.todoist.imports.v1",
 };
+
+const GEMINI_MODEL = import.meta.env.VITE_GEMINI_MODEL || "gemini-1.5-flash";
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
+const WHATSAPP_LOOKBACK_DAYS = Number.parseInt(import.meta.env.VITE_WHATSAPP_LOOKBACK_DAYS ?? "30", 10);
+const WHATSAPP_COMPANY_NAME = import.meta.env.VITE_WHATSAPP_COMPANY_NAME || "GENERAL";
+const WHATSAPP_PROJECT_NAME = import.meta.env.VITE_WHATSAPP_PROJECT_NAME || "General Project";
+const MAX_WHATSAPP_LINES = Number.parseInt(import.meta.env.VITE_WHATSAPP_MAX_LINES ?? "2000", 10);
+const WHATSAPP_LOG_SHEET_ID = import.meta.env.VITE_WHATSAPP_LOG_SHEET_ID || "";
 
 
 const DEFAULT_COMPANY = {
@@ -106,6 +113,15 @@ const state = {
   openDropdown: null,
   dialogAttachmentDraft: [],
   openSectionMenu: null,
+  importJob: {
+    file: null,
+    status: "idle",
+    error: "",
+    stats: null,
+  },
+  imports: {
+    whatsapp: {},
+  },
 };
 
 const elements = {
@@ -176,6 +192,15 @@ const elements = {
   userguideEditor: document.getElementById("userguideEditor"),
   userguideEditToggle: document.querySelector('[data-action="edit-userguide"]'),
   userguideCancelEdit: document.querySelector('[data-action="cancel-userguide"]'),
+  importWhatsapp: document.getElementById("importWhatsapp"),
+  whatsappDialog: document.getElementById("whatsappDialog"),
+  whatsappForm: document.getElementById("whatsappForm"),
+  whatsappFile: document.getElementById("whatsappFile"),
+  whatsappPreview: document.getElementById("whatsappPreview"),
+  whatsappFileLabel: document.querySelector("[data-whatsapp-file]"),
+  whatsappRangeLabel: document.querySelector("[data-whatsapp-range]"),
+  whatsappSummary: document.querySelector("[data-whatsapp-summary]"),
+  whatsappError: document.getElementById("whatsappError"),
 };
 
 
@@ -224,6 +249,10 @@ const saveDepartments = () => {
 };
 const saveUserguide = () => {
   saveJSON(STORAGE_KEYS.userguide, state.userguide);
+  persistWorkspace();
+};
+const saveImports = () => {
+  saveJSON(STORAGE_KEYS.imports, state.imports);
   persistWorkspace();
 };
 const savePreferences = () =>
@@ -529,6 +558,7 @@ const getStateSnapshot = () => ({
   departments: state.departments,
   settings: state.settings,
   userguide: state.userguide,
+  imports: state.imports,
 });
 
 const persistWorkspace = async () => {
@@ -560,6 +590,10 @@ const applyRemoteState = (data) => {
   state.departments = Array.isArray(incoming.departments) ? incoming.departments : [];
   state.settings = normaliseSettings(incoming.settings ?? defaultSettings());
   state.userguide = normaliseUserguide(incoming.userguide);
+  const incomingImports = incoming.imports;
+  state.imports = {
+    whatsapp: { ...(incomingImports?.whatsapp ?? {}) },
+  };
   upgradeUserguideIfLegacy();
 
   ensureDefaultCompany();
@@ -578,6 +612,7 @@ const applyRemoteState = (data) => {
   saveJSON(STORAGE_KEYS.departments, state.departments);
   saveJSON(STORAGE_KEYS.settings, state.settings);
   saveJSON(STORAGE_KEYS.userguide, state.userguide);
+  saveJSON(STORAGE_KEYS.imports, state.imports);
 
   applySettings();
 };
@@ -1203,6 +1238,18 @@ const buildMeta = (task, container) => {
   const due = describeDueDate(task.dueDate);
   if (due.label) pushMetaChip(container, due.label, due.className || "meta-chip");
 
+  if (task.createdAt) {
+    const createdDate = new Date(task.createdAt);
+    if (!Number.isNaN(createdDate.getTime())) {
+      const createdLabel = new Intl.DateTimeFormat(undefined, {
+        month: "short",
+        day: "numeric",
+        year: createdDate.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined,
+      }).format(createdDate);
+      pushMetaChip(container, `Created ${createdLabel}`, "meta-chip subtle");
+    }
+  }
+
   const section = getSectionById(task.sectionId);
   if (section && !(state.viewMode === "board" && state.activeView.type === "project")) {
     pushMetaChip(container, section.name);
@@ -1674,6 +1721,7 @@ const addTask = (payload) => {
   ensureSectionForProject(projectId);
   const sectionId = payload.sectionId || getDefaultSectionId(projectId);
   const now = new Date().toISOString();
+  const createdAt = payload.createdAt ?? now;
 
   const task = {
     id: generateId("task"),
@@ -1688,7 +1736,7 @@ const addTask = (payload) => {
     assigneeId: payload.assigneeId || "",
     attachments: Array.isArray(payload.attachments) ? payload.attachments : [],
     completed: false,
-    createdAt: now,
+    createdAt,
     updatedAt: now,
   };
 
@@ -2373,6 +2421,7 @@ const handleClearAll = () => {
   state.activeCompanyId = DEFAULT_COMPANY.id;
   state.companyRecents = {};
   state.userguide = [...DEFAULT_USERGUIDE];
+  state.imports = { whatsapp: {} };
 
   ensureSectionForProject("inbox");
 
@@ -2383,6 +2432,7 @@ const handleClearAll = () => {
   saveMembers();
   saveDepartments();
   saveUserguide();
+  saveImports();
   setActiveView("view", "inbox");
 };
 
@@ -2748,6 +2798,545 @@ const toggleUserguide = () => {
   }
 };
 
+const MS_IN_DAY = 24 * 60 * 60 * 1000;
+const WHATSAPP_MESSAGE_REGEX =
+  /^(\d{1,2}[\/\.\-]\d{1,2}[\/\.\-]\d{2,4}),?\s+(\d{1,2}:\d{2}(?:\s?[APap][Mm])?)\s+-\s+([^:]+?):\s(.*)$/;
+
+const normaliseYear = (year) => {
+  if (!year) return "";
+  return year.length === 2 ? `20${year}` : year;
+};
+
+const normaliseTimePart = (timePart = "") =>
+  timePart
+    .replace(/\u202f/g, " ")
+    .replace(/\./g, ":")
+    .replace(/([APap])\.?M\.?/g, "$1M")
+    .toUpperCase();
+
+const parseWhatsappTimestamp = (datePart, timePart) => {
+  const cleanTime = normaliseTimePart(timePart);
+  const separators = /[\/\.\-]/;
+  const parts = datePart.split(separators).map((part) => part.trim());
+  if (parts.length < 3) {
+    const parsed = Date.parse(`${datePart} ${cleanTime}`);
+    return Number.isNaN(parsed) ? null : new Date(parsed);
+  }
+  let [a, b, c] = parts;
+  c = normaliseYear(c);
+
+  const tryParse = (month, day) => {
+    const candidate = Date.parse(`${month}/${day}/${c} ${cleanTime}`);
+    return Number.isNaN(candidate) ? null : new Date(candidate);
+  };
+
+  let parsed = tryParse(a, b);
+  if (parsed) return parsed;
+
+  parsed = tryParse(b, a);
+  if (parsed) return parsed;
+
+  const fallback = Date.parse(`${datePart} ${cleanTime}`);
+  return Number.isNaN(fallback) ? null : new Date(fallback);
+};
+
+const extractChatName = (line, fallback) => {
+  if (!line) return fallback;
+  const trimmed = line.replace(/^\uFEFF/, "").trim();
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith("whatsapp chat with")) {
+    return trimmed.split("with").slice(1).join("with").trim() || fallback;
+  }
+  if (lower.startsWith("messages to this chat")) return fallback;
+  if (lower.startsWith("chat history with")) {
+    return trimmed.split("with").slice(1).join("with").trim() || fallback;
+  }
+  return fallback;
+};
+
+const parseWhatsappTranscript = (rawText, fileName) => {
+  const text = rawText.replace(/^\uFEFF/, "");
+  const lines = text.split(/\r?\n/);
+  const fallbackName = (fileName || "WhatsApp Chat").replace(/\.txt$/i, "").trim() || "WhatsApp Chat";
+  let chatName = fallbackName;
+  const messages = [];
+  let current = null;
+
+  while (lines.length && !lines[0].trim()) {
+    lines.shift();
+  }
+  if (lines.length) {
+    chatName = extractChatName(lines[0], fallbackName);
+    if (lines[0].toLowerCase().includes("whatsapp chat with")) {
+      lines.shift();
+    }
+  }
+
+  for (const rawLine of lines) {
+    if (!rawLine) continue;
+    const line = rawLine.replace(/\u202f/g, " ").trim();
+    if (!line) continue;
+    if (/Messages and calls are end-to-end encrypted/i.test(line)) continue;
+    if (/^<Media omitted>$/i.test(line)) continue;
+
+    const match = WHATSAPP_MESSAGE_REGEX.exec(line);
+    if (match) {
+      const [, datePart, timePart, senderPart, messagePart] = match;
+      const timestamp = parseWhatsappTimestamp(datePart, timePart);
+      if (!timestamp) continue;
+      current = {
+        timestamp,
+        sender: senderPart.trim(),
+        text: messagePart.trim(),
+      };
+      messages.push(current);
+      continue;
+    }
+    if (current) {
+      current.text = `${current.text}\n${rawLine.trim()}`;
+    }
+  }
+
+  return { chatName, messages };
+};
+
+const readWhatsappExport = async (file) => {
+  const name = file.name || "whatsapp-export";
+  if (name.toLowerCase().endsWith(".zip")) {
+    const arrayBuffer = await file.arrayBuffer();
+    const zip = await JSZip.loadAsync(arrayBuffer);
+    const txtEntry = Object.values(zip.files).find((entry) => entry.name.toLowerCase().endsWith(".txt"));
+    if (!txtEntry) {
+      throw new Error("The ZIP file does not contain a chat text export.");
+    }
+    const text = await txtEntry.async("string");
+    return parseWhatsappTranscript(text, txtEntry.name);
+  }
+  const text = await file.text();
+  return parseWhatsappTranscript(text, name);
+};
+
+const formatDateRange = (start, end) => {
+  if (!start || !end) return "";
+  const sameDay = start.toDateString() === end.toDateString();
+  const formatter = new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: start.getFullYear() !== end.getFullYear() || start.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined,
+  });
+  if (sameDay) return formatter.format(end);
+  return `${formatter.format(start)} – ${formatter.format(end)}`;
+};
+
+const buildTranscript = (messages) =>
+  messages
+    .map(
+      (message, index) =>
+        `[${index}] ${message.timestamp.toISOString()} | ${message.sender}: ${message.text.replace(/\s+/g, " ").trim()}`,
+    )
+    .join("\n");
+
+const normalisePriority = (value) => {
+  const allowed = ["critical", "very-high", "high", "medium", "low", "optional"];
+  if (typeof value !== "string") return "medium";
+  const normalised = value.trim().toLowerCase();
+  return allowed.includes(normalised) ? normalised : "medium";
+};
+
+const normaliseDueDate = (value) => {
+  if (!value || typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  const parsed = Date.parse(trimmed);
+  if (Number.isNaN(parsed)) return "";
+  const iso = new Date(parsed).toISOString();
+  return iso.slice(0, 10);
+};
+
+const getWhatsappDestination = () => {
+  const company = state.companies.find(
+    (entry) => entry.name?.trim().toLowerCase() === WHATSAPP_COMPANY_NAME.trim().toLowerCase(),
+  );
+  if (!company) {
+    throw new Error(
+      `Create a company named "${WHATSAPP_COMPANY_NAME}" so WhatsApp imports know where to store tasks.`,
+    );
+  }
+  const project = state.projects.find(
+    (entry) =>
+      entry.companyId === company.id &&
+      entry.name?.trim().toLowerCase() === WHATSAPP_PROJECT_NAME.trim().toLowerCase(),
+  );
+  if (!project) {
+    throw new Error(
+      `Create a project named "${WHATSAPP_PROJECT_NAME}" inside "${WHATSAPP_COMPANY_NAME}" for WhatsApp imports.`,
+    );
+  }
+  const section = ensureSectionForProject(project.id);
+  return { company, project, section };
+};
+
+const ensureWhatsappLookbackWindow = () => {
+  if (Number.isNaN(WHATSAPP_LOOKBACK_DAYS) || WHATSAPP_LOOKBACK_DAYS <= 0) {
+    return 30;
+  }
+  return WHATSAPP_LOOKBACK_DAYS;
+};
+
+const parseGeminiJson = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (payload && Array.isArray(payload.items)) return payload.items;
+  if (payload && Array.isArray(payload.actions)) return payload.actions;
+  return [];
+};
+
+const callGeminiForActionItems = async ({ chatName, transcript, allowedAssignees }) => {
+  if (!GEMINI_API_KEY) {
+    throw new Error("Set VITE_GEMINI_API_KEY to enable WhatsApp imports.");
+  }
+  if (!transcript) return [];
+
+  const allowedNames = allowedAssignees.map((entry) => entry.name).filter(Boolean);
+  const instructions = [
+    "You are extracting actionable tasks from a WhatsApp chat transcript.",
+    `Chat name: ${chatName}`,
+    "The transcript contains lines formatted as: [index] ISO_TIMESTAMP | sender: message",
+    "Return ONLY JSON (do not wrap in code fences). The JSON must be an array of objects with these fields:",
+    '- "title": short imperative summary of the action item.',
+    '- "description": fuller explanation including relevant context and next steps.',
+    '- "assignee": exactly match one of the allowed names below; if nobody applies, use null.',
+    '- "dueDate": ISO date string (YYYY-MM-DD) if an explicit or strongly implied deadline exists, otherwise null.',
+    '- "priority": one of ["critical","very-high","high","medium","low","optional"] (default to "medium").',
+    '- "sourceTimestamp": copy the ISO timestamp from the transcript line that triggered the action.',
+    '- "sourceSender": the name of the person who stated the action item.',
+    "Only include genuine action items, commitments, or requests that require follow-up.",
+    `Allowed assignees: ${allowedNames.length ? allowedNames.join(", ") : "(none)"}.`,
+    "If no action items are present, return an empty JSON array.",
+  ].join("\n");
+
+  const body = {
+    contents: [
+      {
+        role: "user",
+        parts: [
+          { text: instructions },
+          { text: `Transcript:\n${transcript}` },
+        ],
+      },
+    ],
+    generationConfig: {
+      temperature: 0.2,
+      topK: 32,
+      responseMimeType: "application/json",
+    },
+  };
+
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+    GEMINI_MODEL,
+  )}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    const message = payload?.error?.message || "Gemini API request failed.";
+    throw new Error(message);
+  }
+
+  const candidate = payload?.candidates?.[0];
+  const partText =
+    candidate?.content?.parts?.[0]?.text ??
+    candidate?.content?.[0]?.text ??
+    candidate?.content?.parts?.map((part) => part.text).filter(Boolean).join("\n");
+  if (!partText) return [];
+
+  try {
+    const parsed = JSON.parse(partText);
+    return parseGeminiJson(parsed);
+  } catch (error) {
+    console.error("Failed to parse Gemini response", error, partText);
+    throw new Error("Gemini returned an unexpected response.");
+  }
+};
+
+const summariseImportStats = ({ chatName, messageCount, taskCount }) => {
+  const lines = [];
+  lines.push(`${messageCount} new message${messageCount === 1 ? "" : "s"} analysed`);
+  lines.push(`${taskCount} action item${taskCount === 1 ? "" : "s"} created`);
+  lines.push(`Source chat: ${chatName}`);
+  return lines;
+};
+
+const logWhatsappActionsToSheet = async ({ chatName, tasks }) => {
+  if (!WHATSAPP_LOG_SHEET_ID) return;
+  // Placeholder for future spreadsheet logging.
+  console.info(
+    `[WhatsApp Import] Spreadsheet logging not yet implemented. Pending ${tasks.length} item(s) for ${chatName}.`,
+  );
+};
+
+const resetWhatsappImport = () => {
+  state.importJob = {
+    file: null,
+    status: "idle",
+    error: "",
+    stats: null,
+  };
+  if (elements.whatsappForm) {
+    elements.whatsappForm.reset();
+  }
+  renderWhatsappImport();
+};
+
+const renderWhatsappImport = () => {
+  const { file, status, error, stats } = state.importJob;
+  if (elements.whatsappPreview) {
+    if (stats && file) {
+      elements.whatsappPreview.hidden = false;
+      if (elements.whatsappFileLabel) {
+        elements.whatsappFileLabel.textContent = file.name;
+      }
+      if (elements.whatsappRangeLabel) {
+        elements.whatsappRangeLabel.textContent = stats.range ?? "Ready to analyse";
+      }
+      if (elements.whatsappSummary) {
+        elements.whatsappSummary.replaceChildren(
+          ...(Array.isArray(stats.summary) && stats.summary.length
+            ? stats.summary.map((line) => {
+                const item = document.createElement("li");
+                item.textContent = line;
+                return item;
+              })
+            : []),
+        );
+        elements.whatsappSummary.hidden = !(Array.isArray(stats.summary) && stats.summary.length);
+      }
+    } else {
+      elements.whatsappPreview.hidden = true;
+    }
+  }
+
+  if (elements.whatsappError) {
+    if (error) {
+      elements.whatsappError.hidden = false;
+      elements.whatsappError.textContent = error;
+    } else {
+      elements.whatsappError.hidden = true;
+      elements.whatsappError.textContent = "";
+    }
+  }
+
+  if (elements.whatsappFile) {
+    elements.whatsappFile.disabled = status === "processing";
+  }
+  const submitButton = elements.whatsappForm?.querySelector('[data-action="submit-whatsapp"]');
+  if (submitButton) {
+    submitButton.disabled = status === "processing" || !file;
+    submitButton.textContent =
+      status === "processing" ? "Processing…" : status === "completed" ? "Run again" : "Fetch action items";
+  }
+};
+
+const openWhatsappDialog = () => {
+  resetWhatsappImport();
+  const dialog = elements.whatsappDialog;
+  if (!dialog) return;
+  if (typeof dialog.showModal === "function") {
+    dialog.showModal();
+  } else {
+    dialog.setAttribute("open", "");
+  }
+};
+
+const closeWhatsappDialog = () => {
+  const dialog = elements.whatsappDialog;
+  if (!dialog) return;
+  if (typeof dialog.close === "function") {
+    dialog.close();
+  } else {
+    dialog.removeAttribute("open");
+  }
+};
+
+const handleWhatsappFileChange = (event) => {
+  const file = event.target.files?.[0] ?? null;
+  state.importJob.file = file;
+  state.importJob.error = "";
+  state.importJob.stats = file
+    ? {
+        range: "Ready to analyse",
+        summary: [],
+      }
+    : null;
+  renderWhatsappImport();
+};
+
+const processWhatsappImport = async () => {
+  const file = state.importJob.file;
+  if (!file) {
+    throw new Error("Select a WhatsApp export before importing.");
+  }
+
+  const { company, project, section } = getWhatsappDestination();
+  const { chatName, messages } = await readWhatsappExport(file);
+  if (!messages.length) {
+    throw new Error("No messages were found in the chat export.");
+  }
+
+  const lookbackDays = ensureWhatsappLookbackWindow();
+  const windowStart = new Date(Date.now() - lookbackDays * MS_IN_DAY);
+  const chatKey = chatName || file.name || "default-chat";
+  const lastProcessedISO = state.imports.whatsapp[chatKey];
+  const lastProcessedTime = lastProcessedISO ? new Date(lastProcessedISO).getTime() : null;
+
+  const filtered = messages
+    .filter((message) => {
+      const time = message.timestamp.getTime();
+      if (Number.isNaN(time)) return false;
+      if (time < windowStart.getTime()) return false;
+      if (lastProcessedTime && time <= lastProcessedTime) return false;
+      return true;
+    })
+    .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+  if (!filtered.length) {
+    state.importJob.stats = {
+      range: formatDateRange(windowStart, new Date()),
+      summary: [
+        lastProcessedISO
+          ? `No new messages since ${new Date(lastProcessedISO).toLocaleString()}`
+          : "No recent messages found in the last 30 days",
+      ],
+    };
+    renderWhatsappImport();
+    return;
+  }
+
+  const limited = filtered.slice(-Math.max(10, Math.min(filtered.length, MAX_WHATSAPP_LINES || 2000)));
+  const transcript = buildTranscript(limited);
+  const allowedAssignees = state.members.map((member) => ({ id: member.id, name: member.name }));
+  const actionItems = await callGeminiForActionItems({
+    chatName,
+    transcript,
+    allowedAssignees,
+  });
+
+  const memberLookup = new Map(
+    allowedAssignees
+      .filter((member) => member.name)
+      .map((member) => [member.name.trim().toLowerCase(), member.id]),
+  );
+
+  const createdTasks = [];
+  const latestTimestamp = filtered[filtered.length - 1].timestamp;
+  const earliestTimestamp = filtered[0].timestamp;
+
+  for (const item of actionItems) {
+    if (!item || typeof item !== "object") continue;
+    const title = String(item.title ?? "").trim();
+    if (!title) continue;
+
+    const sourceTimestamp = item.sourceTimestamp ? new Date(item.sourceTimestamp) : null;
+    const createdAt =
+      sourceTimestamp && !Number.isNaN(sourceTimestamp.getTime())
+        ? sourceTimestamp.toISOString()
+        : limited[limited.length - 1].timestamp.toISOString();
+
+    const assigneeName = typeof item.assignee === "string" ? item.assignee.trim().toLowerCase() : "";
+    const assigneeId = assigneeName && memberLookup.has(assigneeName) ? memberLookup.get(assigneeName) : "";
+
+    const dueDate = normaliseDueDate(item.dueDate);
+    const priority = normalisePriority(item.priority);
+    const sender = typeof item.sourceSender === "string" ? item.sourceSender.trim() : "";
+    const detail = typeof item.description === "string" ? item.description.trim() : "";
+
+    const messageSummary = sender
+      ? `Source: ${sender} in ${chatName}`
+      : `Source chat: ${chatName}`;
+    const descriptionSegments = [detail, messageSummary];
+    if (sourceTimestamp && !Number.isNaN(sourceTimestamp.getTime())) {
+      descriptionSegments.push(`Mentioned on ${sourceTimestamp.toLocaleString()}`);
+    }
+
+    const task = addTask({
+      title,
+      description: descriptionSegments.filter(Boolean).join("\n\n"),
+      projectId: project.id,
+      sectionId: section.id,
+      assigneeId,
+      departmentId: "",
+      priority,
+      dueDate: dueDate || "",
+      createdAt,
+    });
+    createdTasks.push(task);
+  }
+
+  if (createdTasks.length) {
+    render();
+    updateDashboardMetrics();
+    renderActivityFeed();
+    await logWhatsappActionsToSheet({ chatName, tasks: createdTasks });
+  }
+
+  state.imports.whatsapp[chatKey] = latestTimestamp.toISOString();
+  saveImports();
+
+  state.importJob.stats = {
+    range: formatDateRange(earliestTimestamp, latestTimestamp),
+    summary: summariseImportStats({
+      chatName,
+      messageCount: filtered.length,
+      taskCount: createdTasks.length,
+    }),
+  };
+  renderWhatsappImport();
+
+  if (!createdTasks.length) {
+    window.alert("No action items were found in the latest messages.");
+  } else {
+    window.alert(`Imported ${createdTasks.length} action item${createdTasks.length === 1 ? "" : "s"} from ${chatName}.`);
+  }
+};
+
+const handleWhatsappSubmit = async (event) => {
+  event.preventDefault();
+  if (!state.importJob.file) {
+    state.importJob.error = "Select a WhatsApp export before importing.";
+    renderWhatsappImport();
+    return;
+  }
+  state.importJob.status = "processing";
+  state.importJob.error = "";
+  renderWhatsappImport();
+  try {
+    await processWhatsappImport();
+    state.importJob.status = "completed";
+  } catch (error) {
+    console.error("Failed to import WhatsApp export", error);
+    state.importJob.error =
+      error?.message ?? "We couldn't process the export. Please try again or check the file.";
+    state.importJob.status = "idle";
+    renderWhatsappImport();
+    return;
+  } finally {
+    renderWhatsappImport();
+  }
+};
+
+const handleWhatsappDialogClick = (event) => {
+  const action = event.target?.dataset?.action;
+  if (action === "cancel-whatsapp") {
+    event.preventDefault();
+    closeWhatsappDialog();
+  }
+};
+
 const handleGlobalClick = (event) => {
   if (event.target.closest('[data-action="section-menu"]')) return;
   if (event.target.closest('.section-menu')) return;
@@ -2959,6 +3548,10 @@ const hydrateStateFromLocal = () => {
   state.departments = loadJSON(STORAGE_KEYS.departments, []);
   state.settings = normaliseSettings(loadJSON(STORAGE_KEYS.settings, defaultSettings()));
   state.userguide = normaliseUserguide(loadJSON(STORAGE_KEYS.userguide, DEFAULT_USERGUIDE));
+  const storedImports = loadJSON(STORAGE_KEYS.imports, { whatsapp: {} });
+  state.imports = {
+    whatsapp: { ...(storedImports?.whatsapp ?? {}) },
+  };
   upgradeUserguideIfLegacy();
 
   ensureDefaultCompany();
@@ -2998,6 +3591,14 @@ const registerEventListeners = () => {
   document
     .querySelectorAll('[data-action="close-userguide"]')
     .forEach((button) => button.addEventListener("click", closeUserguide));
+  elements.importWhatsapp?.addEventListener("click", openWhatsappDialog);
+  elements.whatsappForm?.addEventListener("submit", handleWhatsappSubmit);
+  elements.whatsappForm?.addEventListener("click", handleWhatsappDialogClick);
+  elements.whatsappFile?.addEventListener("change", handleWhatsappFileChange);
+  elements.whatsappDialog?.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeWhatsappDialog();
+  });
 
   [elements.taskList, elements.completedList].forEach((list) => {
     if (!list) return;

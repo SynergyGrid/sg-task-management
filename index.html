@@ -252,6 +252,12 @@
                   </svg>
                   Manage Departments
                 </button>
+                <button id="importWhatsapp" class="chip-button">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 1 1 0-8h10a4 4 0 1 1 0 8H7Zm5-8v12"></path>
+                  </svg>
+                  Import WhatsApp
+                </button>
               </div>
             </div>
 
@@ -490,6 +496,40 @@
           </div>
         </div>
       </div>
+    </form>
+  </dialog>
+
+  <!-- WhatsApp import dialog -->
+  <dialog id="whatsappDialog" class="modal">
+    <form id="whatsappForm" method="dialog" class="modal-card max-w-2xl">
+      <header class="modal-header">
+        <h2 class="text-lg font-semibold text-slate-900">Import WhatsApp action items</h2>
+        <button type="button" class="ghost-button small" data-action="cancel-whatsapp">Close</button>
+      </header>
+      <div class="modal-body space-y-4">
+        <p class="text-sm text-slate-600">
+          Upload a WhatsApp chat export (<code>.zip</code> or <code>.txt</code>). Only the last 30 days are processed,
+          and messages older than the last import are skipped automatically.
+        </p>
+        <label class="form-field">
+          <span class="field-label">Chat export</span>
+          <input id="whatsappFile" type="file" name="whatsappFile" accept=".zip,.txt" required class="field-input" />
+          <small class="text-xs text-slate-500">Exports without media work best. Media text will be supported later.</small>
+        </label>
+        <div id="whatsappPreview" class="import-preview" hidden>
+          <p class="text-sm text-slate-600">
+            <strong data-whatsapp-file></strong>
+            <span class="text-slate-400">•</span>
+            <span data-whatsapp-range></span>
+          </p>
+          <ul class="import-summary" data-whatsapp-summary></ul>
+        </div>
+        <p id="whatsappError" class="text-sm text-rose-500" hidden></p>
+      </div>
+      <footer class="modal-footer">
+        <button type="button" class="ghost-button" data-action="cancel-whatsapp">Cancel</button>
+        <button type="submit" class="btn-primary" data-action="submit-whatsapp">Fetch action items</button>
+      </footer>
     </form>
   </dialog>
 

@@ -11,6 +11,7 @@ Synergy Tasks is a Todoist-style task manager. The UI now boots directly into a 
 - Quick-add form for new tasks plus a full editor dialog for deeper changes.
 - Priorities, due dates, descriptions, and completion history with a toggle.
 - Type-to-filter search, JSON export, and full data reset options.
+- WhatsApp importer (Gemini-powered) that reads the last 30 days of chat history, extracts action items, and drops them into the "GENERAL -> General Project" board automatically.
 
 ## Folder Layout
 
@@ -48,13 +49,30 @@ The dev server runs at `http://localhost:5173` and serves `index.html` and `sett
 
 ## Deploy Online
 
-1. **Netlify / Cloudflare Pages (recommended)** – the repo already contains `netlify.toml`. Set the base directory to `client`, build command `npm run build`, and publish directory `dist`. Add the following environment variables:
+1. **Netlify / Cloudflare Pages (recommended)** - the repo already contains `netlify.toml`. Set the base directory to `client`, build command `npm run build`, and publish directory `dist`. Add the following environment variables:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
    - `VITE_SHARED_EMAIL`
    - `VITE_SHARED_PASSWORD`
-2. **Manual** – Inside `task-manager/client` run `npm run build` and upload the generated `dist/` folder to any static host.
+   - `VITE_GEMINI_API_KEY`
+   - `VITE_GEMINI_MODEL` (optional, defaults to `gemini-1.5-flash`)
+   - `VITE_WHATSAPP_LOOKBACK_DAYS` (optional, defaults to `30`)
+   - `VITE_WHATSAPP_COMPANY_NAME` (defaults to `GENERAL`)
+   - `VITE_WHATSAPP_PROJECT_NAME` (defaults to `General Project`)
+   - `VITE_WHATSAPP_MAX_LINES` (optional prompt safeguard)
+   - `VITE_WHATSAPP_LOG_SHEET_ID` (optional, reserved for upcoming spreadsheet logging)
+2. **Manual** - Inside `task-manager/client` run `npm run build` and upload the generated `dist/` folder to any static host.
 
+## WhatsApp Action Item Importer
+
+1. Export the chat from WhatsApp (without media) on mobile. ZIP exports are supported; the importer automatically opens the `.txt` transcript inside the archive.
+2. Upload the export via **Import WhatsApp** in the workspace header. Only the last 30 days are analysed, and the importer remembers the latest processed timestamp to avoid duplicates.
+3. Google Gemini parses the transcript, extracts action items, respects any explicit or strongly implied deadlines, and only assigns tasks if the named person already exists as a member.
+4. Tasks are created in the configured destination (`GENERAL` company -> `General Project`) with the original message timestamp stored as the task's creation date.
+
+Environment variables control the behaviour and can be overridden per deployment: `VITE_GEMINI_MODEL`, `VITE_WHATSAPP_LOOKBACK_DAYS`, `VITE_WHATSAPP_COMPANY_NAME`, `VITE_WHATSAPP_PROJECT_NAME`, `VITE_WHATSAPP_MAX_LINES`, and the optional `VITE_WHATSAPP_LOG_SHEET_ID` for future spreadsheet logging.
+
+> Media OCR and spreadsheet logging hooks are stubbed in the codebase and can be enabled later without changing the importer UI.
 ## Customisation Notes
 
 - Adjust colours, typography, or spacing near the top of `styles.css`.
@@ -62,6 +80,7 @@ The dev server runs at `http://localhost:5173` and serves `index.html` and `sett
 - Seed default sections, departments, or members by tweaking the constants near the top of `src/app.js`.
 - Tailwind via CDN powers the UI. Swap it with a PostCSS build if you prefer local Tailwind compilation.
 - The client signs into Supabase automatically using the shared credentials in `VITE_SHARED_EMAIL` / `VITE_SHARED_PASSWORD`. Create that user once in Supabase Auth (email/password) and share the same values with your team.
+- The WhatsApp importer needs Gemini credentials and a destination company/project (see `VITE_*` variables above).
 
 ## Supabase Migration Status
 
@@ -76,4 +95,4 @@ Tested on current Chrome, Edge, Safari, and Firefox. When `crypto.randomUUID` is
 
 ## License
 
-MIT – free for personal or commercial use. Update this section if you ship with different terms.
+MIT - free for personal or commercial use. Update this section if you ship with different terms.

@@ -981,3 +981,26 @@ header.dragging-section {
   justify-content: flex-end;
   gap: 0.5rem;
 }
+
+.meta-chip.subtle {
+  background: rgba(148, 163, 184, 0.12);
+  color: #6b7280;
+}
+
+.import-preview {
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 1rem;
+  padding: 1rem;
+  background: rgba(248, 250, 252, 0.9);
+}
+
+.import-summary {
+  margin: 0.75rem 0 0;
+  padding-left: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  list-style: disc;
+  color: #475569;
+  font-size: 0.9rem;
+}
