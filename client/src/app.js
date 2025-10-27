@@ -51,12 +51,16 @@ const PRIORITY_LABELS = {
   optional: "Optional priority",
 };
 const DEFAULT_USERGUIDE = [
-  "Choose a company from the dropdown near the top. Each company keeps its own projects, sections, and tasks, so pick the one you plan to update.",
-  "Open the Project dropdown to jump into work inside that company. Use the + button to create new projects, or the pencil/bin icons beside a project to rename or delete it.",
-  "Keep sections organised. Click Add section or use the menu on each column to rename or remove it, and drag section headers to change their order.",
-  "Add tasks with the Quick Add form or from the board/list view. Set the project, section, due date, assignee, and priority, then drag cards between sections as work moves forward.",
-  "Need to move work between companies? Edit the task or project and pick the new project—its company automatically follows, and tasks keep their history.",
-  "Keep everyone aligned: update this Userguide whenever the process changes (Userguide → Edit guide) and export tasks regularly if you need an offline backup.",
+  "Start by choosing a company from the dropdown under the search bar. Each company keeps a separate set of projects, sections, tasks, team metrics, and preferences.",
+  "Need a new company? Open the Company dropdown, hit New company, optionally add its first project, and use the pencil/trash buttons beside any company to rename or remove it when the work wraps up.",
+  "Open the Project dropdown to jump directly into work for the current company. Add projects with the inline + button, rename them with the pencil icon, or delete unused ones (trash) to keep the list lean.",
+  "Stay organised with sections: click Add section while viewing a project, rename sections from their column menu, delete extras when finished, and drag section headers to reorder the workflow.",
+  "Capture work through Quick Add or while editing an existing card. Pick the correct company/project/section, add due dates, priorities, departments, assignees, and attachments, then drag cards between sections as work progresses.",
+  "Switch between List and Board views using the toggle in the hero card. Board view is project-specific and lets you drag cards between sections; List view works everywhere for quick triage.",
+  "Moving work across companies? Edit the task (or project), choose the new project from the dropdown, and the linked company updates automatically while keeping task history intact.",
+  "Use the Manage Members and Manage Departments buttons to keep team data current so you can assign tasks accurately and keep dashboard metrics meaningful.",
+  "Before changing processes, export the workspace (Download button in the header) or copy the latest build so you always have a reference snapshot.",
+  "Keep this Userguide current: click Userguide → Edit guide whenever instructions change so the whole team sees the latest way of working.",
 ];
 
 const state = {
