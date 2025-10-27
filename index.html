@@ -101,30 +101,20 @@
             <h2 class="text-2xl font-semibold text-slate-900 leading-tight">How to stay organised</h2>
             <p class="text-sm text-slate-500">Simple steps anyone on the team can follow.</p>
           </div>
-          <button type="button" class="ghost-button small" data-action="close-userguide">Close</button>
+          <div class="userguide-actions">
+            <button type="button" class="ghost-button small" data-action="edit-userguide">Edit guide</button>
+            <button type="button" class="ghost-button small" data-action="close-userguide">Close</button>
+          </div>
         </header>
-        <ol class="userguide-list">
-          <li>
-            <strong>Pick a company.</strong>
-            Use the Company dropdown to jump between organisations. Each one keeps its own projects and sections.
-          </li>
-          <li>
-            <strong>Choose a project.</strong>
-            The Project dropdown lists only work that belongs to the selected company and remembers the last project you touched for quick access.
-          </li>
-          <li>
-            <strong>Plan with sections.</strong>
-            Sections stay visible on the board. Drag them to reorder and use the menu in each column to rename or remove them.
-          </li>
-          <li>
-            <strong>Add or move tasks.</strong>
-            Create tasks from Quick Add or the board, then drag them between sections or edit them to move across companies.
-          </li>
-          <li>
-            <strong>Keep the workspace tidy.</strong>
-            Archive projects or companies you no longer need, and revisit this guide whenever new features roll out.
-          </li>
-        </ol>
+        <ol id="userguideList" class="userguide-list"></ol>
+        <form id="userguideForm" class="userguide-form" hidden>
+          <label class="field-label" for="userguideEditor">Update the steps (one per line)</label>
+          <textarea id="userguideEditor" rows="6" class="field-input" placeholder="Add step per line"></textarea>
+          <div class="userguide-form__actions">
+            <button type="button" class="btn-secondary" data-action="cancel-userguide">Cancel</button>
+            <button type="submit" class="btn-primary">Save guide</button>
+          </div>
+        </form>
       </div>
     </div>
   </section>

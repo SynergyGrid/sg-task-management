@@ -12,6 +12,7 @@ const STORAGE_KEYS = {
   departments: "synergygrid.todoist.departments.v1",
   preferences: "synergygrid.todoist.preferences.v2",
   settings: "synergygrid.todoist.settings.v1",
+  userguide: "synergygrid.todoist.userguide.v1",
 };
 
 
@@ -49,6 +50,13 @@ const PRIORITY_LABELS = {
   low: "Low priority",
   optional: "Optional priority",
 };
+const DEFAULT_USERGUIDE = [
+  "Pick the company you want to work on. Each one has its own projects and sections.",
+  "Choose a project from that company. The dropdown remembers whatever you used last.",
+  "Shape the workflow with sections. Drag them to reorder and use their menus to rename or remove them.",
+  "Add or move tasks. Create tasks from Quick Add or the board, then drag them between sections.",
+  "Tidy up regularly. Archive unused companies or projects and keep the guide updated when processes change.",
+];
 
 const state = {
   tasks: [],
@@ -61,6 +69,7 @@ const state = {
   activeView: { type: "view", value: "inbox" },
   activeCompanyId: DEFAULT_COMPANY.id,
   companyRecents: {},
+  userguide: [...DEFAULT_USERGUIDE],
   viewMode: "list",
   searchTerm: "",
   showCompleted: false,
@@ -71,6 +80,7 @@ const state = {
   sectionDropTarget: null,
   isQuickAddOpen: false,
   isUserguideOpen: false,
+  isEditingUserguide: false,
   openDropdown: null,
   dialogAttachmentDraft: [],
   openSectionMenu: null,
@@ -131,6 +141,19 @@ const elements = {
   activeTasksMetric: document.getElementById("active-tasks"),
   activityFeed: document.getElementById("activity-feed"),
   userguidePanel: document.getElementById("userguidePanel"),
+  companyDropdownToggle: document.getElementById("companyDropdownToggle"),
+  companyDropdownMenu: document.getElementById("companyDropdownMenu"),
+  companyDropdownList: document.getElementById("companyDropdownList"),
+  companyDropdownLabel: document.getElementById("companyDropdownLabel"),
+  projectDropdownToggle: document.getElementById("projectDropdownToggle"),
+  projectDropdownMenu: document.getElementById("projectDropdownMenu"),
+  projectDropdownList: document.getElementById("projectDropdownList"),
+  projectDropdownLabel: document.getElementById("projectDropdownLabel"),
+  userguideList: document.getElementById("userguideList"),
+  userguideForm: document.getElementById("userguideForm"),
+  userguideEditor: document.getElementById("userguideEditor"),
+  userguideEditToggle: document.querySelector('[data-action="edit-userguide"]'),
+  userguideCancelEdit: document.querySelector('[data-action="cancel-userguide"]'),
 };
 
 
@@ -175,6 +198,10 @@ const saveMembers = () => {
 };
 const saveDepartments = () => {
   saveJSON(STORAGE_KEYS.departments, state.departments);
+  persistWorkspace();
+};
+const saveUserguide = () => {
+  saveJSON(STORAGE_KEYS.userguide, state.userguide);
   persistWorkspace();
 };
 const savePreferences = () =>
@@ -330,6 +357,14 @@ const ensureCompanyPreferences = () => {
   }
 };
 
+const normaliseUserguide = (entries) => {
+  if (!Array.isArray(entries)) return [...DEFAULT_USERGUIDE];
+  const cleaned = entries
+    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+    .filter(Boolean);
+  return cleaned.length ? cleaned : [...DEFAULT_USERGUIDE];
+};
+
 const setActiveCompany = (companyId) => {
   const company = getCompanyById(companyId);
   if (!company || state.activeCompanyId === companyId) return;
@@ -451,6 +486,7 @@ const getStateSnapshot = () => ({
   members: state.members,
   departments: state.departments,
   settings: state.settings,
+  userguide: state.userguide,
 });
 
 const persistWorkspace = async () => {
@@ -481,6 +517,7 @@ const applyRemoteState = (data) => {
   state.members = Array.isArray(incoming.members) ? incoming.members : [];
   state.departments = Array.isArray(incoming.departments) ? incoming.departments : [];
   state.settings = normaliseSettings(incoming.settings ?? defaultSettings());
+  state.userguide = normaliseUserguide(incoming.userguide);
 
   ensureDefaultCompany();
   ensureDefaultProject();
@@ -497,6 +534,7 @@ const applyRemoteState = (data) => {
   saveJSON(STORAGE_KEYS.members, state.members);
   saveJSON(STORAGE_KEYS.departments, state.departments);
   saveJSON(STORAGE_KEYS.settings, state.settings);
+  saveJSON(STORAGE_KEYS.userguide, state.userguide);
 
   applySettings();
 };
@@ -1448,6 +1486,29 @@ const renderActivityFeed = () => {
   elements.activityFeed.replaceChildren(fragment);
 };
 
+const renderUserguidePanel = () => {
+  if (!elements.userguidePanel) return;
+  if (elements.userguideList) {
+    const fragment = document.createDocumentFragment();
+    state.userguide.forEach((entry) => {
+      const item = document.createElement("li");
+      item.textContent = entry;
+      fragment.append(item);
+    });
+    elements.userguideList.replaceChildren(fragment);
+    elements.userguideList.hidden = state.isEditingUserguide;
+  }
+  if (elements.userguideForm) {
+    elements.userguideForm.hidden = !state.isEditingUserguide;
+  }
+  if (elements.userguideEditToggle) {
+    elements.userguideEditToggle.hidden = state.isEditingUserguide;
+  }
+  if (state.isEditingUserguide && elements.userguideEditor) {
+    elements.userguideEditor.value = state.userguide.join("\n");
+  }
+};
+
 const updateDashboardMetrics = () => {
   const filter = state.metricsFilter || 'all';
   const scopedTasks = tasksForCompany();
@@ -1520,6 +1581,7 @@ const render = () => {
   populateProjectOptions();
   updateTeamSelects();
   updateSectionSelects();
+  renderUserguidePanel();
   applyViewVisibility();
   renderTasks();
   syncQuickAddSelectors();
@@ -2238,6 +2300,7 @@ const handleExport = () => {
     companies: state.companies,
     members: state.members,
     departments: state.departments,
+    userguide: state.userguide,
     exportedAt: new Date().toISOString(),
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
@@ -2262,6 +2325,7 @@ const handleClearAll = () => {
   state.departments = [{ ...DEFAULT_DEPARTMENT }];
   state.activeCompanyId = DEFAULT_COMPANY.id;
   state.companyRecents = {};
+  state.userguide = [...DEFAULT_USERGUIDE];
 
   ensureSectionForProject("inbox");
 
@@ -2271,6 +2335,7 @@ const handleClearAll = () => {
   saveCompanies();
   saveMembers();
   saveDepartments();
+  saveUserguide();
   setActiveView("view", "inbox");
 };
 
@@ -2498,6 +2563,30 @@ const handleProjectMenuClick = (event) => {
   }
 };
 
+const handleUserguideEditToggle = () => {
+  state.isEditingUserguide = true;
+  renderUserguidePanel();
+  elements.userguideEditor?.focus();
+};
+
+const handleUserguideCancelEdit = () => {
+  state.isEditingUserguide = false;
+  renderUserguidePanel();
+};
+
+const handleUserguideSave = (event) => {
+  event.preventDefault();
+  const raw = elements.userguideEditor?.value ?? "";
+  const entries = raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  state.userguide = entries.length ? entries : [...DEFAULT_USERGUIDE];
+  state.isEditingUserguide = false;
+  saveUserguide();
+  renderUserguidePanel();
+};
+
 const handleBoardClick = (event) => {
   const menuTrigger = event.target.closest('[data-action="section-menu"]');
   if (menuTrigger) {
@@ -2590,6 +2679,7 @@ const openUserguide = () => {
   elements.userguidePanel.hidden = false;
   state.isUserguideOpen = true;
   closeAllDropdowns();
+  renderUserguidePanel();
   elements.userguidePanel.scrollIntoView({ behavior: "smooth", block: "start" });
 };
 
@@ -2597,6 +2687,10 @@ const closeUserguide = () => {
   if (!elements.userguidePanel || !state.isUserguideOpen) return;
   elements.userguidePanel.hidden = true;
   state.isUserguideOpen = false;
+  if (state.isEditingUserguide) {
+    state.isEditingUserguide = false;
+    renderUserguidePanel();
+  }
 };
 
 const toggleUserguide = () => {
@@ -2817,6 +2911,7 @@ const hydrateStateFromLocal = () => {
   state.members = loadJSON(STORAGE_KEYS.members, []);
   state.departments = loadJSON(STORAGE_KEYS.departments, []);
   state.settings = normaliseSettings(loadJSON(STORAGE_KEYS.settings, defaultSettings()));
+  state.userguide = normaliseUserguide(loadJSON(STORAGE_KEYS.userguide, DEFAULT_USERGUIDE));
 
   ensureDefaultCompany();
   ensureDefaultProject();
@@ -2846,6 +2941,9 @@ const registerEventListeners = () => {
   elements.projectDropdownToggle?.addEventListener("click", () => toggleDropdown("project"));
   elements.companyDropdownMenu?.addEventListener("click", handleCompanyMenuClick);
   elements.projectDropdownMenu?.addEventListener("click", handleProjectMenuClick);
+  elements.userguideEditToggle?.addEventListener("click", handleUserguideEditToggle);
+  elements.userguideCancelEdit?.addEventListener("click", handleUserguideCancelEdit);
+  elements.userguideForm?.addEventListener("submit", handleUserguideSave);
   document
     .querySelectorAll('[data-action="open-userguide"]')
     .forEach((button) => button.addEventListener("click", toggleUserguide));

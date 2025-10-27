@@ -943,6 +943,11 @@ header.dragging-section {
   gap: 1rem;
 }
 
+.userguide-actions {
+  display: inline-flex;
+  gap: 0.5rem;
+}
+
 .userguide-list {
   margin-top: 1.5rem;
   padding-left: 1.25rem;
@@ -962,4 +967,17 @@ header.dragging-section {
   margin-bottom: 0.15rem;
   font-weight: 600;
   color: #1e293b;
+}
+
+.userguide-form {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.userguide-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
 }
