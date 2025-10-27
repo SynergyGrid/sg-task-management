@@ -51,11 +51,12 @@ const PRIORITY_LABELS = {
   optional: "Optional priority",
 };
 const DEFAULT_USERGUIDE = [
-  "Pick the company you want to work on. Each one has its own projects and sections.",
-  "Choose a project from that company. The dropdown remembers whatever you used last.",
-  "Shape the workflow with sections. Drag them to reorder and use their menus to rename or remove them.",
-  "Add or move tasks. Create tasks from Quick Add or the board, then drag them between sections.",
-  "Tidy up regularly. Archive unused companies or projects and keep the guide updated when processes change.",
+  "Choose a company from the dropdown near the top. Each company keeps its own projects, sections, and tasks, so pick the one you plan to update.",
+  "Open the Project dropdown to jump into work inside that company. Use the + button to create new projects, or the pencil/bin icons beside a project to rename or delete it.",
+  "Keep sections organised. Click Add section or use the menu on each column to rename or remove it, and drag section headers to change their order.",
+  "Add tasks with the Quick Add form or from the board/list view. Set the project, section, due date, assignee, and priority, then drag cards between sections as work moves forward.",
+  "Need to move work between companies? Edit the task or project and pick the new project—its company automatically follows, and tasks keep their history.",
+  "Keep everyone aligned: update this Userguide whenever the process changes (Userguide → Edit guide) and export tasks regularly if you need an offline backup.",
 ];
 
 const state = {
