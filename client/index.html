@@ -62,6 +62,9 @@
           <div class="hidden md:flex items-center space-x-4 ml-6">
             <a href="index.html" class="text-sm font-medium text-slate-500 hover:text-slate-900 transition">Workspace</a>
             <a href="settings.html" class="text-sm font-medium text-slate-500 hover:text-slate-900 transition">Settings</a>
+            <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900 transition" data-action="open-userguide" aria-controls="userguidePanel">
+              Userguide
+            </button>
           </div>
         </div>
         <div class="flex items-center space-x-4">
@@ -79,10 +82,52 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m4 16 4 4 4-4m-4 4V4m7 4h4a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-4"></path>
             </svg>
           </button>
+          <button class="nav-icon-btn md:hidden" type="button" data-action="open-userguide" aria-controls="userguidePanel" aria-label="Open userguide">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M9.09 9a3 3 0 1 1 5.82 1.5c-.54 1.06-1.59 1.49-1.91 2.5-.08.27-.1.52-.1 1" />
+            </svg>
+          </button>
         </div>
       </div>
     </div>
   </nav>
+
+  <section id="userguidePanel" class="userguide-panel" hidden aria-live="polite">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="userguide-card">
+        <header class="userguide-card__header">
+          <div>
+            <p class="text-sm font-semibold uppercase tracking-wide text-slate-500">Userguide</p>
+            <h2 class="text-2xl font-semibold text-slate-900 leading-tight">How to stay organised</h2>
+            <p class="text-sm text-slate-500">Simple steps anyone on the team can follow.</p>
+          </div>
+          <button type="button" class="ghost-button small" data-action="close-userguide">Close</button>
+        </header>
+        <ol class="userguide-list">
+          <li>
+            <strong>Pick a company.</strong>
+            Use the Company dropdown to jump between organisations. Each one keeps its own projects and sections.
+          </li>
+          <li>
+            <strong>Choose a project.</strong>
+            The Project dropdown lists only work that belongs to the selected company and remembers the last project you touched for quick access.
+          </li>
+          <li>
+            <strong>Plan with sections.</strong>
+            Sections stay visible on the board. Drag them to reorder and use the menu in each column to rename or remove them.
+          </li>
+          <li>
+            <strong>Add or move tasks.</strong>
+            Create tasks from Quick Add or the board, then drag them between sections or edit them to move across companies.
+          </li>
+          <li>
+            <strong>Keep the workspace tidy.</strong>
+            Archive projects or companies you no longer need, and revisit this guide whenever new features roll out.
+          </li>
+        </ol>
+      </div>
+    </div>
+  </section>
 
   <!-- Hero -->
   <section class="relative overflow-hidden bg-gradient-to-br from-blue-500 to-teal-500 py-12 text-white">
@@ -146,14 +191,56 @@
 
           <div class="px-6 py-4 border-b border-slate-100 space-y-4">
             <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div class="flex flex-wrap gap-3 items-center">
+              <div class="flex flex-col gap-3 w-full">
                 <label class="block lg:hidden">
                   <span class="sr-only">Search tasks</span>
                   <input id="searchInput-mobile" type="search" placeholder="Search tasks" class="search-input w-full" />
                 </label>
-                <div class="flex flex-wrap gap-2 items-center">
-                  <span class="text-xs uppercase tracking-wide text-slate-500">Projects:</span>
-                  <ul id="projectList" class="flex flex-wrap gap-2"></ul>
+                <div class="selectors-grid">
+                  <div class="selector-group">
+                    <span class="selector-label">Company</span>
+                    <div class="selector-dropdown" data-dropdown="company">
+                      <button id="companyDropdownToggle" class="selector-toggle" type="button" aria-haspopup="true" aria-expanded="false">
+                        <span id="companyDropdownLabel">Select company</span>
+                        <svg class="w-4 h-4" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                          <path d="M5 8l5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+                        </svg>
+                      </button>
+                      <div id="companyDropdownMenu" class="selector-menu" role="menu" hidden>
+                        <div class="selector-menu-actions">
+                          <button type="button" class="chip-button w-full justify-center" data-action="add-company">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v12m6-6H6"></path>
+                            </svg>
+                            New company
+                          </button>
+                        </div>
+                        <ul id="companyDropdownList" class="selector-list" role="listbox"></ul>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="selector-group">
+                    <span class="selector-label">Project</span>
+                    <div class="selector-dropdown" data-dropdown="project">
+                      <button id="projectDropdownToggle" class="selector-toggle" type="button" aria-haspopup="true" aria-expanded="false">
+                        <span id="projectDropdownLabel">Select project</span>
+                        <svg class="w-4 h-4" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                          <path d="M5 8l5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+                        </svg>
+                      </button>
+                      <div id="projectDropdownMenu" class="selector-menu" role="menu" hidden>
+                        <div class="selector-menu-actions">
+                          <button type="button" class="chip-button w-full justify-center" data-action="add-project-inline">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v12m6-6H6"></path>
+                            </svg>
+                            New project
+                          </button>
+                        </div>
+                        <ul id="projectDropdownList" class="selector-list" role="listbox"></ul>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div class="flex flex-wrap gap-2">
@@ -365,17 +452,6 @@
         <button type="button" class="chip-button" data-action="edit">Edit</button>
         <button type="button" class="chip-button danger" data-action="delete">Delete</button>
       </div>
-    </li>
-  </template>
-
-  <!-- Project pill template -->
-  <template id="projectItemTemplate">
-    <li>
-      <button class="project-pill" data-project="">
-        <span class="dot" aria-hidden="true"></span>
-        <span class="label"></span>
-        <span class="count">0</span>
-      </button>
     </li>
   </template>
 

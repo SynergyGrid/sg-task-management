@@ -1,7 +1,13 @@
-﻿const STORAGE_KEYS = {
+import { db } from './lib/firebaseClient';
+import { doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore';
+
+
+
+const STORAGE_KEYS = {
   tasks: "synergygrid.todoist.tasks.v2",
   projects: "synergygrid.todoist.projects.v2",
   sections: "synergygrid.todoist.sections.v1",
+  companies: "synergygrid.todoist.companies.v1",
   members: "synergygrid.todoist.members.v1",
   departments: "synergygrid.todoist.departments.v1",
   preferences: "synergygrid.todoist.preferences.v2",
@@ -9,9 +15,17 @@
 };
 
 
+const DEFAULT_COMPANY = {
+  id: "company-default",
+  name: "Synergy Grid",
+  isDefault: true,
+  createdAt: new Date().toISOString(),
+};
+
 const DEFAULT_PROJECT = {
   id: "inbox",
   name: "Inbox",
+  companyId: DEFAULT_COMPANY.id,
   color: "#e44232",
   isDefault: true,
   createdAt: new Date().toISOString(),
@@ -40,10 +54,13 @@ const state = {
   tasks: [],
   projects: [],
   sections: [],
+  companies: [],
   members: [],
   departments: [],
   settings: null,
   activeView: { type: "view", value: "inbox" },
+  activeCompanyId: DEFAULT_COMPANY.id,
+  companyRecents: {},
   viewMode: "list",
   searchTerm: "",
   showCompleted: false,
@@ -53,14 +70,14 @@ const state = {
   dragSectionId: null,
   sectionDropTarget: null,
   isQuickAddOpen: false,
+  isUserguideOpen: false,
+  openDropdown: null,
   dialogAttachmentDraft: [],
   openSectionMenu: null,
 };
 
-
 const elements = {
   viewList: document.getElementById("viewList"),
-  projectList: document.getElementById("projectList"),
   viewCounts: {
     inbox: document.querySelector('[data-count="inbox"]'),
     today: document.querySelector('[data-count="today"]'),
@@ -111,9 +128,9 @@ const elements = {
   dialogAttachmentsInput: document.querySelector('#dialogForm input[name="attachments"]'),
   dialogAttachmentList: document.querySelector('#dialogForm [data-dialog-attachment-list]'),
   taskTemplate: document.getElementById("taskItemTemplate"),
-  projectTemplate: document.getElementById("projectItemTemplate"),
   activeTasksMetric: document.getElementById("active-tasks"),
   activityFeed: document.getElementById("activity-feed"),
+  userguidePanel: document.getElementById("userguidePanel"),
 };
 
 
@@ -136,18 +153,66 @@ const saveJSON = (key, value) => {
   }
 };
 
-const saveTasks = () => saveJSON(STORAGE_KEYS.tasks, state.tasks);
-const saveProjects = () => saveJSON(STORAGE_KEYS.projects, state.projects);
-const saveSections = () => saveJSON(STORAGE_KEYS.sections, state.sections);
-const saveMembers = () => saveJSON(STORAGE_KEYS.members, state.members);
-const saveDepartments = () => saveJSON(STORAGE_KEYS.departments, state.departments);
+const saveTasks = () => {
+  saveJSON(STORAGE_KEYS.tasks, state.tasks);
+  persistWorkspace();
+};
+const saveProjects = () => {
+  saveJSON(STORAGE_KEYS.projects, state.projects);
+  persistWorkspace();
+};
+const saveSections = () => {
+  saveJSON(STORAGE_KEYS.sections, state.sections);
+  persistWorkspace();
+};
+const saveCompanies = () => {
+  saveJSON(STORAGE_KEYS.companies, state.companies);
+  persistWorkspace();
+};
+const saveMembers = () => {
+  saveJSON(STORAGE_KEYS.members, state.members);
+  persistWorkspace();
+};
+const saveDepartments = () => {
+  saveJSON(STORAGE_KEYS.departments, state.departments);
+  persistWorkspace();
+};
 const savePreferences = () =>
   saveJSON(STORAGE_KEYS.preferences, {
     activeView: state.activeView,
     viewMode: state.viewMode,
+    activeCompanyId: state.activeCompanyId,
+    companyRecents: state.companyRecents,
     showCompleted: state.showCompleted,
     metricsFilter: state.metricsFilter,
   });
+
+const applyStoredPreferences = () => {
+  const prefs = loadJSON(STORAGE_KEYS.preferences, {});
+  if (prefs.activeView?.type && prefs.activeView?.value) {
+    state.activeView = prefs.activeView;
+  }
+  if (prefs.viewMode === "board" || prefs.viewMode === "list") {
+    state.viewMode = prefs.viewMode;
+  }
+  if (typeof prefs.activeCompanyId === "string") {
+    state.activeCompanyId = prefs.activeCompanyId;
+  }
+  if (prefs.companyRecents && typeof prefs.companyRecents === "object") {
+    state.companyRecents = { ...prefs.companyRecents };
+  }
+  if (typeof prefs.showCompleted === "boolean") {
+    state.showCompleted = prefs.showCompleted;
+  }
+  if (typeof prefs.metricsFilter === "string") {
+    state.metricsFilter = prefs.metricsFilter;
+  }
+
+  if (state.viewMode === "board" && state.activeView.type !== "project") {
+    state.viewMode = "list";
+  }
+  ensureCompanyPreferences();
+};
 
 const generateId = (prefix) => {
   const fallback = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -156,21 +221,135 @@ const generateId = (prefix) => {
 
 const pickProjectColor = (index) => PROJECT_COLORS[index % PROJECT_COLORS.length];
 
+const getCompanyById = (companyId) => state.companies.find((company) => company.id === companyId);
 const getProjectById = (projectId) => state.projects.find((project) => project.id === projectId);
 const getSectionById = (sectionId) => state.sections.find((section) => section.id === sectionId);
 const getSectionsForProject = (projectId) =>
   state.sections
     .filter((section) => section.projectId === projectId)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+const getProjectsForCompany = (companyId) =>
+  state.projects.filter((project) => project.companyId === companyId && !project.isDefault);
+const tasksForCompany = () =>
+  state.tasks.filter((task) => {
+    if (!state.activeCompanyId) return true;
+    if (!task.companyId) return state.activeCompanyId === DEFAULT_COMPANY.id;
+    return task.companyId === state.activeCompanyId;
+  });
+
+const rememberProjectSelection = (projectId) => {
+  const project = getProjectById(projectId);
+  if (!project) return;
+  state.activeCompanyId = project.companyId;
+  state.companyRecents[project.companyId] = project.id;
+};
+
+const getPreferredProjectId = () => {
+  if (state.activeView.type === "project" && getProjectById(state.activeView.value)) {
+    return state.activeView.value;
+  }
+  const remembered = state.companyRecents[state.activeCompanyId];
+  if (remembered && getProjectById(remembered)) {
+    return remembered;
+  }
+  const fallback = getProjectsForCompany(state.activeCompanyId)[0];
+  if (fallback) {
+    return fallback.id;
+  }
+  return DEFAULT_PROJECT.id;
+};
 
 const getMemberById = (memberId) => state.members.find((member) => member.id === memberId);
 const getDepartmentById = (departmentId) =>
   state.departments.find((department) => department.id === departmentId);
 
+const ensureDefaultCompany = () => {
+  if (!state.companies.length) {
+    state.companies = [{ ...DEFAULT_COMPANY }];
+    return;
+  }
+  const hasDefault = state.companies.some((company) => company.id === DEFAULT_COMPANY.id);
+  if (!hasDefault) {
+    state.companies.unshift({ ...DEFAULT_COMPANY });
+  }
+};
+
 const ensureDefaultProject = () => {
-  const hasInbox = state.projects.some((project) => project.id === DEFAULT_PROJECT.id);
-  if (!hasInbox) {
+  const index = state.projects.findIndex((project) => project.id === DEFAULT_PROJECT.id);
+  if (index === -1) {
     state.projects.unshift({ ...DEFAULT_PROJECT });
+    return;
+  }
+  if (!state.projects[index].companyId) {
+    state.projects[index] = { ...state.projects[index], companyId: DEFAULT_COMPANY.id };
+  }
+};
+
+const ensureProjectsHaveCompany = () => {
+  let mutated = false;
+  state.projects = state.projects.map((project) => {
+    if (project.companyId && getCompanyById(project.companyId)) {
+      return project;
+    }
+    mutated = true;
+    return { ...project, companyId: DEFAULT_COMPANY.id };
+  });
+  if (mutated) {
+    const seen = new Map();
+    state.projects.forEach((project) => {
+      seen.set(project.id, project.companyId);
+    });
+    state.tasks = state.tasks.map((task) => {
+      if (!task.projectId) return task;
+      const companyId = seen.get(task.projectId);
+      if (!companyId) return task;
+      return { ...task, companyId };
+    });
+  }
+};
+
+const ensureCompanyPreferences = () => {
+  if (!getCompanyById(state.activeCompanyId)) {
+    state.activeCompanyId = state.companies[0]?.id ?? DEFAULT_COMPANY.id;
+  }
+  const validProjects = new Map(state.projects.map((project) => [project.id, project.companyId]));
+  const nextRecents = {};
+  Object.entries(state.companyRecents || {}).forEach(([companyId, projectId]) => {
+    if (validProjects.get(projectId) === companyId) {
+      nextRecents[companyId] = projectId;
+    }
+  });
+  state.companyRecents = nextRecents;
+  if (!state.companyRecents[state.activeCompanyId]) {
+    const fallbackProject = state.projects.find(
+      (project) => project.companyId === state.activeCompanyId && !project.isDefault,
+    );
+    if (fallbackProject) {
+      state.companyRecents[state.activeCompanyId] = fallbackProject.id;
+    }
+  }
+};
+
+const setActiveCompany = (companyId) => {
+  const company = getCompanyById(companyId);
+  if (!company || state.activeCompanyId === companyId) return;
+  state.activeCompanyId = companyId;
+  const remembered = state.companyRecents[companyId];
+  const rememberedProject = remembered ? getProjectById(remembered) : null;
+  if (rememberedProject) {
+    setActiveView("project", rememberedProject.id);
+    return;
+  }
+  const fallback = getProjectsForCompany(companyId)[0];
+  if (fallback) {
+    setActiveView("project", fallback.id);
+    return;
+  }
+  if (state.activeView.type === "project") {
+    setActiveView("view", "inbox");
+  } else {
+    savePreferences();
+    render();
   }
 };
 
@@ -257,6 +436,104 @@ const normaliseSettings = (settings = {}) => {
   return merged;
 };
 
+const WORKSPACE_ID = import.meta.env.VITE_FIREBASE_WORKSPACE_ID ?? 'default';
+const workspaceRef = doc(db, 'workspaces', WORKSPACE_ID);
+
+let workspaceUnsubscribe = null;
+let remoteLoaded = false;
+let suppressSnapshot = false;
+
+const getStateSnapshot = () => ({
+  tasks: state.tasks,
+  projects: state.projects,
+  sections: state.sections,
+  companies: state.companies,
+  members: state.members,
+  departments: state.departments,
+  settings: state.settings,
+});
+
+const persistWorkspace = async () => {
+  if (!remoteLoaded) return;
+  try {
+    suppressSnapshot = true;
+    await setDoc(
+      workspaceRef,
+      {
+        ...getStateSnapshot(),
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true },
+    );
+  } catch (error) {
+    console.error('Failed to persist workspace to Firestore', error);
+  } finally {
+    suppressSnapshot = false;
+  }
+};
+
+const applyRemoteState = (data) => {
+  const incoming = data || {};
+  state.tasks = Array.isArray(incoming.tasks) ? incoming.tasks : [];
+  state.projects = Array.isArray(incoming.projects) ? incoming.projects : [];
+  state.sections = Array.isArray(incoming.sections) ? incoming.sections : [];
+  state.companies = Array.isArray(incoming.companies) ? incoming.companies : [];
+  state.members = Array.isArray(incoming.members) ? incoming.members : [];
+  state.departments = Array.isArray(incoming.departments) ? incoming.departments : [];
+  state.settings = normaliseSettings(incoming.settings ?? defaultSettings());
+
+  ensureDefaultCompany();
+  ensureDefaultProject();
+  ensureProjectsHaveCompany();
+  ensureDefaultDepartment();
+  ensureAllProjectsHaveSections();
+  ensureCompanyPreferences();
+  state.tasks.forEach(ensureTaskDefaults);
+
+  saveJSON(STORAGE_KEYS.tasks, state.tasks);
+  saveJSON(STORAGE_KEYS.projects, state.projects);
+  saveJSON(STORAGE_KEYS.sections, state.sections);
+  saveJSON(STORAGE_KEYS.companies, state.companies);
+  saveJSON(STORAGE_KEYS.members, state.members);
+  saveJSON(STORAGE_KEYS.departments, state.departments);
+  saveJSON(STORAGE_KEYS.settings, state.settings);
+
+  applySettings();
+};
+
+const startWorkspaceSync = async () => {
+  try {
+    const snapshot = await getDoc(workspaceRef);
+    if (snapshot.exists()) {
+      applyRemoteState(snapshot.data());
+    } else {
+      await setDoc(workspaceRef, {
+        ...getStateSnapshot(),
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    remoteLoaded = true;
+    applyStoredPreferences();
+    render();
+
+    workspaceUnsubscribe = onSnapshot(
+      workspaceRef,
+      (docSnapshot) => {
+        if (suppressSnapshot) return;
+        if (!docSnapshot.exists()) return;
+        applyRemoteState(docSnapshot.data());
+        render();
+      },
+      (error) => {
+        console.error('Firestore realtime listener error', error);
+      },
+    );
+  } catch (error) {
+    console.error('Failed to load workspace from Firestore', error);
+    throw error;
+  }
+};
+
 const hexToRgba = (hex, alpha) => {
   if (!hex) return `rgba(37, 99, 235, ${alpha})`;
   const normalized = (hex || '').replace('#', '');
@@ -320,6 +597,8 @@ const ensureTaskDefaults = (task) => {
   if (!getProjectById(task.projectId)) {
     task.projectId = "inbox";
   }
+  const project = getProjectById(task.projectId);
+  task.companyId = project?.companyId ?? DEFAULT_COMPANY.id;
   const validSection = task.sectionId && getSectionById(task.sectionId);
   if (!validSection) {
     task.sectionId = getDefaultSectionId(task.projectId);
@@ -385,6 +664,11 @@ const matchesActiveView = (task) => {
   const { type, value } = state.activeView;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const matchesCompany =
+    !state.activeCompanyId ||
+    task.companyId === state.activeCompanyId ||
+    (!task.companyId && state.activeCompanyId === DEFAULT_COMPANY.id);
+  if (!matchesCompany) return false;
 
   if (type === "view") {
     if (value === "inbox") return task.projectId === "inbox";
@@ -444,47 +728,166 @@ const tasksForCurrentView = () =>
 const openTasks = (tasks) => tasks.filter((task) => !task.completed);
 const completedTasks = (tasks) => tasks.filter((task) => task.completed);
 
-const renderProjects = () => {
-  elements.projectList.replaceChildren();
+const renderCompanyDropdown = () => {
+  if (!elements.companyDropdownList) return;
   const fragment = document.createDocumentFragment();
-  state.projects
-    .filter((project) => !project.isDefault)
-    .forEach((project) => {
-      const template = elements.projectTemplate.content.cloneNode(true);
-      const button = template.querySelector("button");
-      const dot = template.querySelector(".dot");
-      const label = template.querySelector(".label");
-      const count = template.querySelector(".count");
+  if (!state.companies.length) {
+    const empty = document.createElement("li");
+    empty.className = "text-sm text-slate-500 px-2 py-1.5";
+    empty.textContent = "Add your first company.";
+    fragment.append(empty);
+  } else {
+    state.companies.forEach((company) => {
+      const item = document.createElement("li");
+      item.className = "selector-item";
+      const select = document.createElement("button");
+      select.type = "button";
+      select.dataset.select = "company";
+      select.dataset.companyId = company.id;
+      select.setAttribute("role", "option");
+      const isActive = company.id === state.activeCompanyId;
+      select.classList.toggle("active", isActive);
+      select.setAttribute("aria-selected", String(isActive));
+      select.textContent = company.name;
+      const meta = document.createElement("small");
+      const projectCount = getProjectsForCompany(company.id).length;
+      meta.textContent = projectCount
+        ? `${projectCount} project${projectCount === 1 ? "" : "s"}`
+        : "No projects yet";
+      select.append(meta);
 
-      button.dataset.project = project.id;
-      label.textContent = project.name;
-      dot.style.background = project.color ?? PROJECT_COLORS[0];
-      count.textContent = state.tasks.filter(
-        (task) => task.projectId === project.id && !task.completed
-      ).length;
-
-      if (state.activeView.type === "project" && state.activeView.value === project.id) {
-        button.classList.add("active");
-      }
-
-      fragment.append(template);
+      const actions = document.createElement("div");
+      actions.className = "selector-item-actions";
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.className = "selector-action-btn";
+      edit.dataset.action = "edit-company";
+      edit.dataset.companyId = company.id;
+      edit.setAttribute("aria-label", `Rename ${company.name}`);
+      edit.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 20h4l10-10-4-4L4 16v4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="m14 6 4 4" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "selector-action-btn";
+      remove.dataset.action = "delete-company";
+      remove.dataset.companyId = company.id;
+      remove.setAttribute("aria-label", `Delete ${company.name}`);
+      remove.disabled = Boolean(company.isDefault);
+      remove.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 7h12m-9 0V5h6v2m-1 3v7m-4-7v7M7 7l1 12h8l1-12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+      actions.append(edit, remove);
+      item.append(select, actions);
+      fragment.append(item);
     });
-  elements.projectList.append(fragment);
+  }
+  elements.companyDropdownList.replaceChildren(fragment);
+  if (elements.companyDropdownLabel) {
+    const activeCompany = getCompanyById(state.activeCompanyId);
+    elements.companyDropdownLabel.textContent = activeCompany ? activeCompany.name : "Select company";
+  }
+};
+
+const renderProjectDropdown = () => {
+  if (!elements.projectDropdownList) return;
+  const fragment = document.createDocumentFragment();
+  const scopedTasks = tasksForCompany();
+  const projects = getProjectsForCompany(state.activeCompanyId);
+  let highlightedProjectId = "";
+  let highlightedProject = null;
+  if (state.activeView.type === "project") {
+    const activeProject = getProjectById(state.activeView.value);
+    if (activeProject && activeProject.companyId === state.activeCompanyId && !activeProject.isDefault) {
+      highlightedProjectId = activeProject.id;
+      highlightedProject = activeProject;
+    }
+  }
+  if (!highlightedProjectId) {
+    const rememberedId = state.companyRecents[state.activeCompanyId];
+    const rememberedProject = rememberedId ? getProjectById(rememberedId) : null;
+    if (rememberedProject && rememberedProject.companyId === state.activeCompanyId && !rememberedProject.isDefault) {
+      highlightedProjectId = rememberedProject.id;
+      highlightedProject = rememberedProject;
+    }
+  }
+  if (!projects.length) {
+    const empty = document.createElement("li");
+    empty.className = "text-sm text-slate-500 px-2 py-1.5";
+    empty.textContent = "Create a project to start planning.";
+    fragment.append(empty);
+  } else {
+    projects.forEach((project) => {
+      const item = document.createElement("li");
+      item.className = "selector-item";
+      const select = document.createElement("button");
+      select.type = "button";
+      select.dataset.select = "project";
+      select.dataset.projectId = project.id;
+      select.setAttribute("role", "option");
+      const isActive = project.id === highlightedProjectId;
+      select.classList.toggle("active", isActive);
+      select.setAttribute("aria-selected", String(isActive));
+      select.textContent = project.name;
+      const meta = document.createElement("small");
+      const openTasks = scopedTasks.filter(
+        (task) => task.projectId === project.id && !task.completed,
+      ).length;
+      meta.textContent = openTasks
+        ? `${openTasks} open task${openTasks === 1 ? "" : "s"}`
+        : "No open tasks";
+      select.append(meta);
+
+      const actions = document.createElement("div");
+      actions.className = "selector-item-actions";
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.className = "selector-action-btn";
+      edit.dataset.action = "edit-project";
+      edit.dataset.projectId = project.id;
+      edit.setAttribute("aria-label", `Rename ${project.name}`);
+      edit.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 20h4l10-10-4-4L4 16v4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="m14 6 4 4" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "selector-action-btn";
+      remove.dataset.action = "delete-project";
+      remove.dataset.projectId = project.id;
+      remove.setAttribute("aria-label", `Delete ${project.name}`);
+      remove.disabled = Boolean(project.isDefault);
+      remove.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 7h12m-9 0V5h6v2m-1 3v7m-4-7v7M7 7l1 12h8l1-12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+      actions.append(edit, remove);
+      item.append(select, actions);
+      fragment.append(item);
+    });
+  }
+
+  elements.projectDropdownList.replaceChildren(fragment);
+  if (elements.projectDropdownLabel) {
+    let labelText = "Select project";
+    if (highlightedProject) {
+      labelText = highlightedProject.name;
+    }
+    if (labelText === "Select project" && projects[0]) {
+      labelText = projects[0].name;
+    }
+    elements.projectDropdownLabel.textContent = labelText;
+  }
+  if (elements.projectDropdownToggle) {
+    const hasCompany = Boolean(state.activeCompanyId && getCompanyById(state.activeCompanyId));
+    elements.projectDropdownToggle.disabled = !hasCompany;
+  }
 };
 
 const updateViewCounts = () => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const scopedTasks = tasksForCompany();
 
   const counts = {
-    inbox: state.tasks.filter((task) => task.projectId === "inbox" && !task.completed).length,
-    today: state.tasks.filter((task) => {
+    inbox: scopedTasks.filter((task) => task.projectId === "inbox" && !task.completed).length,
+    today: scopedTasks.filter((task) => {
       if (!task.dueDate || task.completed) return false;
       const due = new Date(task.dueDate);
       due.setHours(0, 0, 0, 0);
       return due.getTime() === today.getTime();
     }).length,
-    upcoming: state.tasks.filter((task) => {
+    upcoming: scopedTasks.filter((task) => {
       if (!task.dueDate || task.completed) return false;
       const due = new Date(task.dueDate);
       due.setHours(0, 0, 0, 0);
@@ -506,7 +909,8 @@ const populateProjectOptions = () => {
   const options = state.projects.map((project) => {
     const option = document.createElement("option");
     option.value = project.id;
-    option.textContent = project.name;
+    const company = getCompanyById(project.companyId);
+    option.textContent = company && !company.isDefault ? `${project.name} · ${company.name}` : project.name;
     return option;
   });
 
@@ -630,14 +1034,6 @@ const updateActiveNav = () => {
         state.activeView.type === "view" && button.dataset.view === state.activeView.value;
       button.classList.toggle("active", isActive);
     });
-
-  elements.projectList
-    .querySelectorAll(".nav-item[data-project]")
-    .forEach((button) => {
-      const isActive =
-        state.activeView.type === "project" && button.dataset.project === state.activeView.value;
-      button.classList.toggle("active", isActive);
-    });
 };
 
 const describeView = () => {
@@ -661,7 +1057,11 @@ const describeView = () => {
   if (type === "project") {
     const project = getProjectById(value);
     if (project) {
-      return { title: project.name, subtitle: "View tasks scoped to this project." };
+      const company = getCompanyById(project.companyId);
+      return {
+        title: project.name,
+        subtitle: company ? `${company.name} · Project board` : "View tasks scoped to this project.",
+      };
     }
   }
   return { title: "Tasks", subtitle: "Stay organised and on track." };
@@ -938,9 +1338,10 @@ const renderTasks = () => {
 const renderTeamStatus = () => {
   if (!elements.teamStatus) return;
   const fragment = document.createDocumentFragment();
+  const scopedTasks = tasksForCompany();
   const summaries = state.departments.map((department) => {
     const members = state.members.filter((member) => member.departmentId === department.id);
-    const activeTasks = state.tasks.filter((task) => task.departmentId === department.id && !task.completed).length;
+    const activeTasks = scopedTasks.filter((task) => task.departmentId === department.id && !task.completed).length;
     return { department, members, activeTasks };
   }).filter((entry) => entry.department.isDefault || entry.members.length || entry.activeTasks);
 
@@ -995,7 +1396,7 @@ const formatRelativeTime = (isoString) => {
 const renderActivityFeed = () => {
   if (!elements.activityFeed) return;
   const fragment = document.createDocumentFragment();
-  const recent = [...state.tasks]
+  const recent = [...tasksForCompany()]
     .sort((a, b) => {
       const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
       const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
@@ -1049,14 +1450,15 @@ const renderActivityFeed = () => {
 
 const updateDashboardMetrics = () => {
   const filter = state.metricsFilter || 'all';
+  const scopedTasks = tasksForCompany();
   let value = 0;
 
   if (filter === 'completed') {
-    value = state.tasks.filter((task) => task.completed).length;
+    value = scopedTasks.filter((task) => task.completed).length;
   } else if (filter === 'all') {
-    value = state.tasks.filter((task) => !task.completed).length;
+    value = scopedTasks.filter((task) => !task.completed).length;
   } else {
-    value = state.tasks.filter((task) => !task.completed && task.priority === filter).length;
+    value = scopedTasks.filter((task) => !task.completed && task.priority === filter).length;
   }
 
   if (elements.metricFilter && elements.metricFilter.value !== filter) {
@@ -1093,15 +1495,17 @@ const applySettings = () => {
 };
 
 const renderSidebar = () => {
-  renderProjects();
+  renderCompanyDropdown();
+  renderProjectDropdown();
   updateActiveNav();
   updateViewCounts();
   renderActivityFeed();
 };
 
 const syncQuickAddSelectors = () => {
+  const preferred = getPreferredProjectId();
   const defaultProjectId =
-    state.activeView.type === "project" ? state.activeView.value : "inbox";
+    preferred || (state.activeCompanyId === DEFAULT_COMPANY.id ? DEFAULT_PROJECT.id : "");
   if (elements.quickAddProject) {
     elements.quickAddProject.value = defaultProjectId;
   }
@@ -1135,8 +1539,21 @@ const setViewMode = (mode) => {
 };
 
 const setActiveView = (type, value) => {
-  state.activeView = { type, value };
-  if (state.viewMode === "board" && type !== "project") {
+  let nextType = type;
+  let nextValue = value;
+  if (type === "project") {
+    const project = getProjectById(value);
+    if (!project) {
+      console.warn("Attempted to open unknown project", value);
+      nextType = "view";
+      nextValue = "inbox";
+    } else {
+      rememberProjectSelection(project.id);
+    }
+  }
+
+  state.activeView = { type: nextType, value: nextValue };
+  if (state.viewMode === "board" && nextType !== "project") {
     state.viewMode = "list";
   }
   savePreferences();
@@ -1144,7 +1561,10 @@ const setActiveView = (type, value) => {
 };
 const addTask = (payload) => {
   const projectId = payload.projectId || "inbox";
+  const project = getProjectById(projectId);
   ensureSectionForProject(projectId);
+  const sectionId = payload.sectionId || getDefaultSectionId(projectId);
+  const now = new Date().toISOString();
 
   const task = {
     id: generateId("task"),
@@ -1153,25 +1573,28 @@ const addTask = (payload) => {
     dueDate: payload.dueDate,
     priority: payload.priority,
     projectId,
-    sectionId: payload.sectionId || getDefaultSectionId(projectId),
+    sectionId,
+    companyId: project?.companyId ?? DEFAULT_COMPANY.id,
     departmentId: payload.departmentId || "",
     assigneeId: payload.assigneeId || "",
     attachments: Array.isArray(payload.attachments) ? payload.attachments : [],
     completed: false,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: now,
+    updatedAt: now,
   };
 
   state.tasks.push(task);
   saveTasks();
   render();
+  return task;
 };
 
 const updateTask = (taskId, updates) => {
   const index = state.tasks.findIndex((task) => task.id === taskId);
-  if (index === -1) return;
+  if (index === -1) return null;
   const previous = state.tasks[index];
   const nextProjectId = updates.projectId ?? previous.projectId;
+  const project = getProjectById(nextProjectId);
   ensureSectionForProject(nextProjectId);
   const nextSectionId =
     updates.sectionId && getSectionById(updates.sectionId)
@@ -1182,16 +1605,32 @@ const updateTask = (taskId, updates) => {
     ? updates.attachments
     : previous.attachments || [];
 
-  state.tasks[index] = {
+  const completedFlag =
+    updates.completed !== undefined ? updates.completed : previous.completed;
+  let completedAt = previous.completedAt || null;
+  if (updates.completed === true && !previous.completed) {
+    completedAt = new Date().toISOString();
+  }
+  if (updates.completed === false) {
+    completedAt = null;
+  }
+
+  const updatedTask = {
     ...previous,
     ...updates,
     projectId: nextProjectId,
     sectionId: nextSectionId,
+    companyId: project?.companyId ?? previous.companyId ?? DEFAULT_COMPANY.id,
     attachments: nextAttachments,
+    completed: completedFlag,
+    completedAt,
     updatedAt: new Date().toISOString(),
   };
+
+  state.tasks[index] = updatedTask;
   saveTasks();
   render();
+  return updatedTask;
 };
 
 const removeTask = (taskId) => {
@@ -1200,27 +1639,34 @@ const removeTask = (taskId) => {
   render();
 };
 
-const createProject = (name) => {
+const createProject = (name, companyId = state.activeCompanyId || DEFAULT_COMPANY.id) => {
   const trimmed = name.trim();
   if (!trimmed) return;
+  const targetCompany = getCompanyById(companyId) ? companyId : DEFAULT_COMPANY.id;
   const exists = state.projects.some(
-    (project) => project.name.toLowerCase() === trimmed.toLowerCase()
+    (project) =>
+      project.companyId === targetCompany && project.name.toLowerCase() === trimmed.toLowerCase()
   );
   if (exists) {
-    window.alert("A project with this name already exists.");
+    window.alert("A project with this name already exists for this company.");
     return;
   }
+
   const project = {
     id: generateId("project"),
     name: trimmed,
+    companyId: targetCompany,
     color: pickProjectColor(state.projects.length),
     createdAt: new Date().toISOString(),
   };
+
   state.projects.push(project);
   saveProjects();
   ensureSectionForProject(project.id);
   saveSections();
+  rememberProjectSelection(project.id);
   setActiveView("project", project.id);
+  return project;
 };
 
 const createSection = (projectId, name) => {
@@ -1241,23 +1687,176 @@ const createSection = (projectId, name) => {
 
 const deleteSection = (sectionId) => {
   const section = getSectionById(sectionId);
-  if (!section) return;
+  if (!section) return null;
 
   const sections = getSectionsForProject(section.projectId);
   if (sections.length <= 1) {
     window.alert("A project must have at least one section.");
-    return;
+    return null;
   }
 
-  const fallback = sections.find((entry) => entry.id !== sectionId)?.id;
+  const fallbackSection = sections.find((entry) => entry.id !== sectionId)?.id;
   state.tasks = state.tasks.map((task) =>
-    task.sectionId === sectionId ? { ...task, sectionId: fallback } : task
+    task.sectionId === sectionId ? { ...task, sectionId: fallbackSection } : task
   );
   state.sections = state.sections.filter((entry) => entry.id !== sectionId);
-
   saveSections();
   saveTasks();
   render();
+  return fallbackSection;
+};
+
+const renameProject = (projectId, nextName) => {
+  const project = getProjectById(projectId);
+  if (!project) return;
+  const trimmed = nextName.trim();
+  if (!trimmed) return;
+  const exists = state.projects.some(
+    (entry) =>
+      entry.id !== projectId &&
+      entry.companyId === project.companyId &&
+      entry.name.toLowerCase() === trimmed.toLowerCase(),
+  );
+  if (exists) {
+    window.alert("Another project in this company already uses that name.");
+    return;
+  }
+  project.name = trimmed;
+  project.updatedAt = new Date().toISOString();
+  saveProjects();
+  renderProjectDropdown();
+  renderHeader();
+  renderTasks();
+};
+
+const deleteProject = (projectId) => {
+  const project = getProjectById(projectId);
+  if (!project) return false;
+  if (project.isDefault) {
+    window.alert("Inbox cannot be deleted.");
+    return false;
+  }
+  const confirmed = window.confirm(`Delete the project "${project.name}" and all of its tasks?`);
+  if (!confirmed) return false;
+
+  state.tasks = state.tasks.filter((task) => task.projectId !== projectId);
+  state.sections = state.sections.filter((section) => section.projectId !== projectId);
+  state.projects = state.projects.filter((entry) => entry.id !== projectId);
+  Object.keys(state.companyRecents).forEach((companyId) => {
+    if (state.companyRecents[companyId] === projectId) {
+      delete state.companyRecents[companyId];
+    }
+  });
+
+  saveTasks();
+  saveSections();
+  saveProjects();
+
+  const remaining = getProjectsForCompany(project.companyId);
+  if (state.activeView.type === "project" && state.activeView.value === projectId) {
+    if (remaining[0]) {
+      setActiveView("project", remaining[0].id);
+    } else {
+      setActiveView("view", "inbox");
+    }
+  } else {
+    savePreferences();
+    render();
+  }
+  return true;
+};
+
+const createCompany = (name) => {
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+  const exists = state.companies.some(
+    (company) => company.name.toLowerCase() === trimmed.toLowerCase(),
+  );
+  if (exists) {
+    window.alert("A company with this name already exists.");
+    return null;
+  }
+  const company = {
+    id: generateId("company"),
+    name: trimmed,
+    createdAt: new Date().toISOString(),
+  };
+  state.companies.push(company);
+  state.activeCompanyId = company.id;
+  state.companyRecents[company.id] = "";
+  saveCompanies();
+  savePreferences();
+  renderCompanyDropdown();
+  renderProjectDropdown();
+  return company;
+};
+
+const renameCompany = (companyId, nextName) => {
+  const company = getCompanyById(companyId);
+  if (!company) return;
+  const trimmed = nextName.trim();
+  if (!trimmed) return;
+  const exists = state.companies.some(
+    (entry) => entry.id !== companyId && entry.name.toLowerCase() === trimmed.toLowerCase(),
+  );
+  if (exists) {
+    window.alert("Another company already uses that name.");
+    return;
+  }
+  company.name = trimmed;
+  company.updatedAt = new Date().toISOString();
+  saveCompanies();
+  renderCompanyDropdown();
+  renderProjectDropdown();
+  renderHeader();
+};
+
+const deleteCompany = (companyId) => {
+  const company = getCompanyById(companyId);
+  if (!company) return false;
+  if (company.isDefault) {
+    window.alert("The default company cannot be deleted.");
+    return false;
+  }
+  const confirmed = window.confirm(
+    `Delete the company "${company.name}"? All related projects, sections, and tasks will be removed.`,
+  );
+  if (!confirmed) return false;
+
+  const projectIds = state.projects
+    .filter((project) => project.companyId === companyId)
+    .map((project) => project.id);
+
+  state.tasks = state.tasks.filter((task) => !projectIds.includes(task.projectId));
+  state.sections = state.sections.filter((section) => !projectIds.includes(section.projectId));
+  state.projects = state.projects.filter((project) => project.companyId !== companyId);
+  state.companies = state.companies.filter((entry) => entry.id !== companyId);
+  delete state.companyRecents[companyId];
+
+  saveTasks();
+  saveSections();
+  saveProjects();
+  saveCompanies();
+
+  if (state.activeCompanyId === companyId) {
+    state.activeCompanyId = state.companies[0]?.id ?? DEFAULT_COMPANY.id;
+    const fallbackCompany = getCompanyById(state.activeCompanyId);
+    if (fallbackCompany) {
+      const fallbackProject = getProjectsForCompany(fallbackCompany.id)[0];
+      if (fallbackProject) {
+        setActiveView("project", fallbackProject.id);
+      } else {
+        savePreferences();
+        render();
+      }
+    } else {
+      setActiveView("view", "inbox");
+    }
+  } else {
+    savePreferences();
+    render();
+  }
+  return true;
 };
 
 const addMember = (name, departmentId) => {
@@ -1267,6 +1866,9 @@ const addMember = (name, departmentId) => {
     id: generateId("member"),
     name: trimmed,
     departmentId: departmentId || "",
+    title: "",
+    email: "",
+    avatarUrl: "",
     createdAt: new Date().toISOString(),
   };
   state.members.push(member);
@@ -1275,6 +1877,7 @@ const addMember = (name, departmentId) => {
   renderMemberList();
   renderTeamStatus();
   updateDashboardMetrics();
+  return member;
 };
 
 const removeMember = (memberId) => {
@@ -1304,6 +1907,7 @@ const addDepartment = (name) => {
   const department = {
     id: generateId("department"),
     name: trimmed,
+    isDefault: false,
     createdAt: new Date().toISOString(),
   };
   state.departments.push(department);
@@ -1312,7 +1916,9 @@ const addDepartment = (name) => {
   renderDepartmentList();
   renderTeamStatus();
   updateDashboardMetrics();
+  return department;
 };
+
 
 const removeDepartment = (departmentId) => {
   const department = getDepartmentById(departmentId);
@@ -1335,9 +1941,9 @@ const removeDepartment = (departmentId) => {
   renderDepartmentList();
   renderMemberList();
   renderTeamStatus();
-  updateDashboardMetrics();
   renderTasks();
 };
+
 
 const renderMemberList = () => {
   if (!elements.memberList) return;
@@ -1435,12 +2041,6 @@ const handleViewClick = (event) => {
   setActiveView("view", button.dataset.view);
 };
 
-const handleProjectClick = (event) => {
-  const button = event.target.closest("[data-project]");
-  if (!button) return;
-  setActiveView("project", button.dataset.project);
-};
-
 const handleTaskCheckboxChange = (event) => {
   if (event.target.type !== "checkbox") return;
   const item = event.target.closest(".task-item");
@@ -1460,7 +2060,9 @@ const handleTaskActionClick = (event) => {
     openTaskDialog(taskId);
   } else if (action === "delete") {
     const confirmed = window.confirm("Delete this task? This cannot be undone.");
-    if (confirmed) removeTask(taskId);
+    if (confirmed) {
+      removeTask(taskId);
+    }
   }
 };
 
@@ -1478,20 +2080,25 @@ const handleQuickAddSubmit = async (event) => {
   const sectionId = data.get("section") || getDefaultSectionId(projectId);
   const attachments = elements.quickAddAttachments ? await readFilesAsData(elements.quickAddAttachments.files) : [];
 
-  addTask({
-    title,
-    description: (data.get("description") ?? "").trim(),
-    dueDate: data.get("dueDate") || "",
-    priority: data.get("priority") || "medium",
-    projectId,
-    sectionId,
-    departmentId: data.get("department") || "",
-    assigneeId: data.get("assignee") || "",
-    attachments,
-  });
+  try {
+    addTask({
+      title,
+      description: (data.get("description") ?? "").trim(),
+      dueDate: data.get("dueDate") || "",
+      priority: data.get("priority") || "medium",
+      projectId,
+      sectionId,
+      departmentId: data.get("department") || "",
+      assigneeId: data.get("assignee") || "",
+      attachments,
+    });
 
-  resetQuickAddForm();
-  closeQuickAddForm();
+    resetQuickAddForm();
+    closeQuickAddForm();
+  } catch (error) {
+    console.error("Failed to create task.", error);
+    elements.quickAddError.textContent = "Unable to create task. Please try again.";
+  }
 };
 
 const handleQuickAddCancel = () => {
@@ -1610,9 +2217,17 @@ const handleToggleCompleted = () => {
 };
 
 const handleAddProject = () => {
+  if (!state.activeCompanyId) {
+    window.alert("Create a company before adding projects.");
+    return;
+  }
   const name = window.prompt("Project name");
   if (!name) return;
-  createProject(name);
+  try {
+    createProject(name, state.activeCompanyId);
+  } catch (error) {
+    console.error("Failed to add project.", error);
+  }
 };
 
 const handleExport = () => {
@@ -1620,6 +2235,7 @@ const handleExport = () => {
     tasks: state.tasks,
     projects: state.projects,
     sections: state.sections,
+    companies: state.companies,
     members: state.members,
     departments: state.departments,
     exportedAt: new Date().toISOString(),
@@ -1641,14 +2257,18 @@ const handleClearAll = () => {
   state.tasks = [];
   state.projects = [{ ...DEFAULT_PROJECT }];
   state.sections = [];
+  state.companies = [{ ...DEFAULT_COMPANY }];
   state.members = [];
   state.departments = [{ ...DEFAULT_DEPARTMENT }];
+  state.activeCompanyId = DEFAULT_COMPANY.id;
+  state.companyRecents = {};
 
   ensureSectionForProject("inbox");
 
   saveTasks();
   saveProjects();
   saveSections();
+  saveCompanies();
   saveMembers();
   saveDepartments();
   setActiveView("view", "inbox");
@@ -1719,19 +2339,24 @@ const handleDialogSubmit = (event) => {
   const projectId = data.get("project") || "inbox";
   const sectionId = data.get("section") || getDefaultSectionId(projectId);
 
-  updateTask(state.editingTaskId, {
-    title,
-    description: (data.get("description") ?? "").trim(),
-    dueDate: data.get("dueDate") || "",
-    priority: data.get("priority") || "medium",
-    projectId,
-    sectionId,
-    departmentId: data.get("department") || "",
-    assigneeId: data.get("assignee") || "",
-    attachments: cloneAttachments(state.dialogAttachmentDraft),
-    completed: elements.dialogForm.completed.checked,
-  });
-  closeTaskDialog();
+  try {
+    updateTask(state.editingTaskId, {
+      title,
+      description: (data.get("description") ?? "").trim(),
+      dueDate: data.get("dueDate") || "",
+      priority: data.get("priority") || "medium",
+      projectId,
+      sectionId,
+      departmentId: data.get("department") || "",
+      assigneeId: data.get("assignee") || "",
+      attachments: cloneAttachments(state.dialogAttachmentDraft),
+      completed: elements.dialogForm.completed.checked,
+    });
+    closeTaskDialog();
+  } catch (error) {
+    console.error("Failed to update task.", error);
+    window.alert("Unable to save changes. Please try again.");
+  }
 };
 
 const handleDialogClick = (event) => {
@@ -1779,9 +2404,98 @@ const handleAddSection = () => {
   }
   const name = window.prompt("Section name");
   if (!name) return;
-  createSection(state.activeView.value, name);
-  saveSections();
-  render();
+  try {
+    createSection(state.activeView.value, name);
+    saveSections();
+    render();
+  } catch (error) {
+    console.error("Failed to add section.", error);
+  }
+};
+
+const handleCompanyMenuClick = (event) => {
+  const addButton = event.target.closest('[data-action="add-company"]');
+  if (addButton) {
+    const name = window.prompt("Company name");
+    if (name) {
+      const company = createCompany(name);
+      if (company) {
+        setActiveCompany(company.id);
+        const projectName = window.prompt("Add a first project for this company?");
+        if (projectName) {
+          createProject(projectName, company.id);
+        } else {
+          renderProjectDropdown();
+        }
+      }
+    }
+    closeDropdown("company");
+    return;
+  }
+
+  const renameButton = event.target.closest('[data-action="edit-company"]');
+  if (renameButton) {
+    const company = getCompanyById(renameButton.dataset.companyId);
+    if (!company) return;
+    const nextName = window.prompt("Rename company", company.name);
+    if (nextName) {
+      renameCompany(company.id, nextName);
+    }
+    return;
+  }
+
+  const deleteButton = event.target.closest('[data-action="delete-company"]');
+  if (deleteButton) {
+    deleteCompany(deleteButton.dataset.companyId);
+    closeDropdown("company");
+    return;
+  }
+
+  const selectButton = event.target.closest('button[data-select="company"]');
+  if (selectButton) {
+    setActiveCompany(selectButton.dataset.companyId);
+    closeDropdown("company");
+  }
+};
+
+const handleProjectMenuClick = (event) => {
+  const addButton = event.target.closest('[data-action="add-project-inline"]');
+  if (addButton) {
+    if (!state.activeCompanyId) {
+      window.alert("Select a company before creating projects.");
+      return;
+    }
+    const name = window.prompt("Project name");
+    if (name) {
+      createProject(name, state.activeCompanyId);
+    }
+    closeDropdown("project");
+    return;
+  }
+
+  const renameButton = event.target.closest('[data-action="edit-project"]');
+  if (renameButton) {
+    const project = getProjectById(renameButton.dataset.projectId);
+    if (!project) return;
+    const nextName = window.prompt("Rename project", project.name);
+    if (nextName) {
+      renameProject(project.id, nextName);
+    }
+    return;
+  }
+
+  const deleteButton = event.target.closest('[data-action="delete-project"]');
+  if (deleteButton) {
+    deleteProject(deleteButton.dataset.projectId);
+    closeDropdown("project");
+    return;
+  }
+
+  const selectButton = event.target.closest('button[data-select="project"]');
+  if (selectButton) {
+    setActiveView("project", selectButton.dataset.projectId);
+    closeDropdown("project");
+  }
 };
 
 const handleBoardClick = (event) => {
@@ -1827,15 +2541,86 @@ const closeSectionMenu = () => {
   state.openSectionMenu = null;
 };
 
+const dropdownElements = {
+  company: () => ({
+    toggle: elements.companyDropdownToggle,
+    menu: elements.companyDropdownMenu,
+  }),
+  project: () => ({
+    toggle: elements.projectDropdownToggle,
+    menu: elements.projectDropdownMenu,
+  }),
+};
+
+const setDropdownState = (type, open) => {
+  const refs = dropdownElements[type]?.();
+  if (!refs) return;
+  if (!refs.toggle || !refs.menu) return;
+  if (open) {
+    closeDropdown(state.openDropdown);
+    refs.menu.removeAttribute("hidden");
+    refs.toggle.setAttribute("aria-expanded", "true");
+    state.openDropdown = type;
+  } else {
+    refs.menu.setAttribute("hidden", "");
+    refs.toggle.setAttribute("aria-expanded", "false");
+    if (state.openDropdown === type) {
+      state.openDropdown = null;
+    }
+  }
+};
+
+const toggleDropdown = (type) => {
+  const isOpen = state.openDropdown === type;
+  setDropdownState(type, !isOpen);
+};
+
+const closeDropdown = (type) => {
+  if (!type) return;
+  setDropdownState(type, false);
+};
+
+const closeAllDropdowns = () => {
+  closeDropdown("company");
+  closeDropdown("project");
+};
+
+const openUserguide = () => {
+  if (!elements.userguidePanel || state.isUserguideOpen) return;
+  elements.userguidePanel.hidden = false;
+  state.isUserguideOpen = true;
+  closeAllDropdowns();
+  elements.userguidePanel.scrollIntoView({ behavior: "smooth", block: "start" });
+};
+
+const closeUserguide = () => {
+  if (!elements.userguidePanel || !state.isUserguideOpen) return;
+  elements.userguidePanel.hidden = true;
+  state.isUserguideOpen = false;
+};
+
+const toggleUserguide = () => {
+  if (state.isUserguideOpen) {
+    closeUserguide();
+  } else {
+    openUserguide();
+  }
+};
+
 const handleGlobalClick = (event) => {
   if (event.target.closest('[data-action="section-menu"]')) return;
   if (event.target.closest('.section-menu')) return;
   closeSectionMenu();
+  if (!event.target.closest(".selector-dropdown")) {
+    closeAllDropdowns();
+  }
 };
 
 const handleGlobalKeydown = (event) => {
   if (event.key === 'Escape') {
     closeSectionMenu();
+    closeAllDropdowns();
+    closeUserguide();
     if (state.isQuickAddOpen) {
       closeQuickAddForm();
     }
@@ -1971,9 +2756,13 @@ const handleMembersFormSubmit = (event) => {
   if (action === "add-member") {
     const name = elements.membersForm.memberName.value;
     const departmentId = elements.membersForm.memberDepartment.value;
-    addMember(name, departmentId);
-    elements.membersForm.reset();
-    elements.membersForm.memberDepartment.value = DEFAULT_DEPARTMENT.id;
+    try {
+      addMember(name, departmentId);
+      elements.membersForm.reset();
+      elements.membersForm.memberDepartment.value = DEFAULT_DEPARTMENT.id;
+    } catch (error) {
+      console.error("Failed to add member from form.", error);
+    }
   }
 };
 
@@ -1984,7 +2773,11 @@ const handleMembersFormClick = (event) => {
     return;
   }
   if (action === "remove-member") {
-    removeMember(event.target.dataset.memberId);
+    try {
+      removeMember(event.target.dataset.memberId);
+    } catch (error) {
+      console.error("Failed to remove member.", error);
+    }
   }
 };
 
@@ -1993,8 +2786,12 @@ const handleDepartmentsFormSubmit = (event) => {
   const action = event.submitter?.dataset.action;
   if (action === "add-department") {
     const name = elements.departmentsForm.departmentName.value;
-    addDepartment(name);
-    elements.departmentsForm.reset();
+    try {
+      addDepartment(name);
+      elements.departmentsForm.reset();
+    } catch (error) {
+      console.error("Failed to add department.", error);
+    }
   }
 };
 
@@ -2005,51 +2802,56 @@ const handleDepartmentsFormClick = (event) => {
     return;
   }
   if (action === "remove-department") {
-    removeDepartment(event.target.dataset.departmentId);
+    try {
+      removeDepartment(event.target.dataset.departmentId);
+    } catch (error) {
+      console.error("Failed to remove department.", error);
+    }
   }
 };
-const hydrateState = () => {
+const hydrateStateFromLocal = () => {
   state.tasks = loadJSON(STORAGE_KEYS.tasks, []);
   state.projects = loadJSON(STORAGE_KEYS.projects, []);
   state.sections = loadJSON(STORAGE_KEYS.sections, []);
+  state.companies = loadJSON(STORAGE_KEYS.companies, [{ ...DEFAULT_COMPANY }]);
   state.members = loadJSON(STORAGE_KEYS.members, []);
   state.departments = loadJSON(STORAGE_KEYS.departments, []);
   state.settings = normaliseSettings(loadJSON(STORAGE_KEYS.settings, defaultSettings()));
 
+  ensureDefaultCompany();
   ensureDefaultProject();
+  ensureProjectsHaveCompany();
   ensureDefaultDepartment();
   ensureAllProjectsHaveSections();
-
   state.tasks.forEach(ensureTaskDefaults);
-  saveTasks();
-  saveSections();
-  saveDepartments();
 
-  const prefs = loadJSON(STORAGE_KEYS.preferences, {});
-  if (prefs.activeView?.type && prefs.activeView?.value) {
-    state.activeView = prefs.activeView;
-  }
-  if (prefs.viewMode === "board" || prefs.viewMode === "list") {
-    state.viewMode = prefs.viewMode;
-  }
-  if (typeof prefs.showCompleted === "boolean") {
-    state.showCompleted = prefs.showCompleted;
-  }
-  if (typeof prefs.metricsFilter === "string") {
-    state.metricsFilter = prefs.metricsFilter;
-  }
+  applyStoredPreferences();
+};
 
-  if (state.viewMode === "board" && state.activeView.type !== "project") {
-    state.viewMode = "list";
+const hydrateState = async () => {
+  applyStoredPreferences();
+  try {
+    await startWorkspaceSync();
+  } catch (error) {
+    console.error('Failed to start Firestore sync, falling back to cached data.', error);
+    hydrateStateFromLocal();
+    render();
   }
-
-  applySettings();
 };
 
 const registerEventListeners = () => {
   elements.viewList?.addEventListener("click", handleViewClick);
-  elements.projectList?.addEventListener("click", handleProjectClick);
   elements.boardColumns?.addEventListener("click", handleBoardClick);
+  elements.companyDropdownToggle?.addEventListener("click", () => toggleDropdown("company"));
+  elements.projectDropdownToggle?.addEventListener("click", () => toggleDropdown("project"));
+  elements.companyDropdownMenu?.addEventListener("click", handleCompanyMenuClick);
+  elements.projectDropdownMenu?.addEventListener("click", handleProjectMenuClick);
+  document
+    .querySelectorAll('[data-action="open-userguide"]')
+    .forEach((button) => button.addEventListener("click", toggleUserguide));
+  document
+    .querySelectorAll('[data-action="close-userguide"]')
+    .forEach((button) => button.addEventListener("click", closeUserguide));
 
   [elements.taskList, elements.completedList].forEach((list) => {
     if (!list) return;
@@ -2120,12 +2922,20 @@ const registerEventListeners = () => {
   window.addEventListener("storage", handleStorageEvent);
 };
 
-const init = () => {
-  hydrateState();
+const init = async () => {
   registerEventListeners();
+  await hydrateState();
   render();
 };
 
-document.addEventListener("DOMContentLoaded", init);
+const startApp = () => {
+  init().catch((error) => {
+    console.error("Failed to initialise workspace", error);
+  });
+};
 
-
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", startApp);
+} else {
+  startApp();
+}
