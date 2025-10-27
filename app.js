@@ -63,6 +63,23 @@ const DEFAULT_USERGUIDE = [
   "Keep this Userguide current: click Userguide → Edit guide whenever instructions change so the whole team sees the latest way of working.",
 ];
 
+const LEGACY_USERGUIDE_V1 = [
+  "Pick a company. Use the Company dropdown to jump between organisations. Each one keeps its own projects and sections.",
+  "Choose a project. The Project dropdown lists only work that belongs to the selected company and remembers the last project you touched for quick access.",
+  "Plan with sections. Sections stay visible on the board. Drag them to reorder and use the menu in each column to rename or remove them.",
+  "Add or move tasks. Create tasks from Quick Add or the board, then drag them between sections or edit them to move across companies.",
+  "Keep the workspace tidy. Archive projects or companies you no longer need, and revisit this guide whenever new features roll out.",
+];
+
+const LEGACY_USERGUIDE_V2 = [
+  "Choose a company from the dropdown near the top. Each company keeps its own projects, sections, and tasks, so pick the one you plan to update.",
+  "Open the Project dropdown to jump into work inside that company. Use the + button to create new projects, or the pencil/bin icons beside a project to rename or delete it.",
+  "Keep sections organised. Click Add section or use the menu on each column to rename or remove it, and drag section headers to change their order.",
+  "Add tasks with the Quick Add form or from the board/list view. Set the project, section, due date, assignee, and priority, then drag cards between sections as work moves forward.",
+  "Need to move work between companies? Edit the task or project and pick the new project—its company automatically follows, and tasks keep their history.",
+  "Keep everyone aligned: update this Userguide whenever the process changes (Userguide → Edit guide) and export tasks regularly if you need an offline backup.",
+];
+
 const state = {
   tasks: [],
   projects: [],
@@ -370,6 +387,25 @@ const normaliseUserguide = (entries) => {
   return cleaned.length ? cleaned : [...DEFAULT_USERGUIDE];
 };
 
+const userguideEquals = (a, b) => {
+  if (!Array.isArray(a) || !Array.isArray(b)) return false;
+  if (a.length !== b.length) return false;
+  return a.every((entry, index) => entry.trim() === (b[index] ?? "").trim());
+};
+
+const isLegacyUserguide = (entries) => LEGACY_USERGUIDES.some((legacy) => userguideEquals(entries, legacy));
+
+const upgradeUserguideIfLegacy = () => {
+  if (!isLegacyUserguide(state.userguide)) return;
+  state.userguide = [...DEFAULT_USERGUIDE];
+  saveJSON(STORAGE_KEYS.userguide, state.userguide);
+  if (remoteLoaded) {
+    saveUserguide();
+  } else {
+    pendingUserguideUpgrade = true;
+  }
+};
+
 const setActiveCompany = (companyId) => {
   const company = getCompanyById(companyId);
   if (!company || state.activeCompanyId === companyId) return;
@@ -482,6 +518,7 @@ const workspaceRef = doc(db, 'workspaces', WORKSPACE_ID);
 let workspaceUnsubscribe = null;
 let remoteLoaded = false;
 let suppressSnapshot = false;
+let pendingUserguideUpgrade = false;
 
 const getStateSnapshot = () => ({
   tasks: state.tasks,
@@ -523,6 +560,7 @@ const applyRemoteState = (data) => {
   state.departments = Array.isArray(incoming.departments) ? incoming.departments : [];
   state.settings = normaliseSettings(incoming.settings ?? defaultSettings());
   state.userguide = normaliseUserguide(incoming.userguide);
+  upgradeUserguideIfLegacy();
 
   ensureDefaultCompany();
   ensureDefaultProject();
@@ -556,6 +594,10 @@ const startWorkspaceSync = async () => {
       });
     }
     remoteLoaded = true;
+    if (pendingUserguideUpgrade) {
+      pendingUserguideUpgrade = false;
+      saveUserguide();
+    }
     applyStoredPreferences();
     render();
 
@@ -2917,6 +2959,7 @@ const hydrateStateFromLocal = () => {
   state.departments = loadJSON(STORAGE_KEYS.departments, []);
   state.settings = normaliseSettings(loadJSON(STORAGE_KEYS.settings, defaultSettings()));
   state.userguide = normaliseUserguide(loadJSON(STORAGE_KEYS.userguide, DEFAULT_USERGUIDE));
+  upgradeUserguideIfLegacy();
 
   ensureDefaultCompany();
   ensureDefaultProject();
@@ -3042,3 +3085,4 @@ if (document.readyState === "loading") {
 } else {
   startApp();
 }
+const LEGACY_USERGUIDES = [LEGACY_USERGUIDE_V1, LEGACY_USERGUIDE_V2];
