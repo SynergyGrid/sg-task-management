@@ -124,10 +124,6 @@
     <div class="absolute inset-0 opacity-10 bg-[url('https://images.unsplash.com/photo-1545239351-1141bd82e8a6?auto=format&fit=crop&w=1600&q=80')] bg-cover bg-center"></div>
     <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="text-center max-w-3xl mx-auto">
-        <h1 class="text-3xl md:text-4xl font-bold mb-4 tracking-tight">Smart Task Prioritisation for Modern Teams</h1>
-        <p class="text-lg text-white/80">
-          Organise projects, manage departments, and collaborate efficiently with Synergy Tasks - all inside your browser.
-        </p>
       </div>
       <div class="max-w-3xl mx-auto mt-10">
         <div class="glass-card flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -186,28 +182,19 @@
                   <span class="sr-only">Search tasks</span>
                   <input id="searchInput-mobile" type="search" placeholder="Search tasks" class="search-input w-full" />
                 </label>
-                <div class="selectors-grid">
+                <div class="flex flex-col gap-3">
                   <div class="selector-group">
-                    <span class="selector-label">Company</span>
-                    <div class="selector-dropdown" data-dropdown="company">
-                      <button id="companyDropdownToggle" class="selector-toggle" type="button" aria-haspopup="true" aria-expanded="false">
-                        <span id="companyDropdownLabel">Select company</span>
-                        <svg class="w-4 h-4" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                          <path d="M5 8l5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                      <span class="selector-label">Company</span>
+                      <button type="button" class="chip-button" data-action="add-company">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v12m6-6H6"></path>
                         </svg>
+                        New company
                       </button>
-                      <div id="companyDropdownMenu" class="selector-menu" role="menu" hidden>
-                        <div class="selector-menu-actions">
-                          <button type="button" class="chip-button w-full justify-center" data-action="add-company">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v12m6-6H6"></path>
-                            </svg>
-                            New company
-                          </button>
-                        </div>
-                        <ul id="companyDropdownList" class="selector-list" role="listbox"></ul>
-                      </div>
                     </div>
+                    <div id="companyTabs" class="tab-strip" role="tablist"></div>
+                    <p id="companyTabsEmpty" class="text-xs text-slate-500 mt-2" hidden>Add your first company.</p>
                   </div>
                   <div class="selector-group">
                     <span class="selector-label">Project</span>
@@ -332,24 +319,12 @@
 
         <section id="listView" class="space-y-6">
           <div class="bg-white border border-slate-200 rounded-2xl shadow-sm">
-            <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+            <div class="px-6 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
               <h3 class="text-base font-semibold text-slate-900" id="viewTitle">Inbox</h3>
-              <button id="toggleCompleted" class="btn-secondary btn-small">Show completed</button>
+              <div id="taskTabList" class="tab-strip tab-strip--compact" role="tablist" aria-label="Task filter tabs"></div>
             </div>
             <div class="px-6 py-5 space-y-5">
-              <ul id="taskList" class="task-list" aria-live="polite"></ul>
-              <p id="emptyState" class="empty-state" hidden>No tasks here yet. Add one to get started.</p>
-            </div>
-          </div>
-
-          <div class="bg-white border border-slate-200 rounded-2xl shadow-sm">
-            <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-              <h3 class="text-base font-semibold text-slate-900">Completed</h3>
-              <span class="text-xs font-medium uppercase tracking-wide text-slate-500">History</span>
-            </div>
-            <div class="px-6 py-5">
-              <ul id="completedList" class="task-list completed hidden" aria-live="polite"></ul>
-              <p class="text-sm text-slate-500" data-empty-completed hidden>No completed tasks yet.</p>
+              <div id="taskTabPanels" class="space-y-5" aria-live="polite"></div>
             </div>
           </div>
         </section>
@@ -446,7 +421,6 @@
       </div>
       <div class="task-actions flex items-center gap-2">
         <button type="button" class="chip-button" data-action="edit">Edit</button>
-        <button type="button" class="chip-button danger" data-action="delete">Delete</button>
       </div>
     </li>
   </template>
@@ -516,10 +490,30 @@
           <input id="whatsappFile" type="file" name="whatsappFile" accept=".zip,.txt" required class="field-input" />
           <small class="text-xs text-slate-500">Exports without media work best. Media text will be supported later.</small>
         </label>
+        <div class="form-row">
+          <label class="form-field">
+            <span class="field-label">Gemini model</span>
+            <select id="whatsappModel" class="field-input">
+              <option value="gemini-1.5-flash">gemini-1.5-flash (default)</option>
+              <option value="gemini-1.5-flash-latest">gemini-1.5-flash-latest</option>
+              <option value="gemini-1.5-flash-002">gemini-1.5-flash-002</option>
+              <option value="gemini-1.5-flash-001">gemini-1.5-flash-001</option>
+              <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+              <option value="gemini-1.0-pro">gemini-1.0-pro</option>
+            </select>
+          </label>
+          <label class="form-field">
+            <span class="field-label">API endpoint</span>
+            <select id="whatsappEndpoint" class="field-input">
+              <option value="v1">v1 (stable)</option>
+              <option value="v1beta">v1beta (fallback)</option>
+            </select>
+          </label>
+        </div>
         <div id="whatsappPreview" class="import-preview" hidden>
           <p class="text-sm text-slate-600">
             <strong data-whatsapp-file></strong>
-            <span class="text-slate-400">•</span>
+            <span class="text-slate-400">&middot;</span>
             <span data-whatsapp-range></span>
           </p>
           <ul class="import-summary" data-whatsapp-summary></ul>
@@ -536,5 +530,6 @@
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>
+
 
 

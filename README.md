@@ -59,6 +59,7 @@ The dev server runs at `http://localhost:5173` and serves `index.html` and `sett
    - `VITE_WHATSAPP_LOOKBACK_DAYS` (optional, defaults to `30`)
    - `VITE_WHATSAPP_COMPANY_NAME` (defaults to `GENERAL`)
    - `VITE_WHATSAPP_PROJECT_NAME` (defaults to `General Project`)
+   - `VITE_WHATSAPP_ENDPOINT` (optional, defaults to `v1`)
    - `VITE_WHATSAPP_MAX_LINES` (optional prompt safeguard)
    - `VITE_WHATSAPP_LOG_SHEET_ID` (optional, reserved for upcoming spreadsheet logging)
 2. **Manual** - Inside `task-manager/client` run `npm run build` and upload the generated `dist/` folder to any static host.
@@ -67,10 +68,13 @@ The dev server runs at `http://localhost:5173` and serves `index.html` and `sett
 
 1. Export the chat from WhatsApp (without media) on mobile. ZIP exports are supported; the importer automatically opens the `.txt` transcript inside the archive.
 2. Upload the export via **Import WhatsApp** in the workspace header. Only the last 30 days are analysed, and the importer remembers the latest processed timestamp to avoid duplicates.
-3. Google Gemini parses the transcript, extracts action items, respects any explicit or strongly implied deadlines, and only assigns tasks if the named person already exists as a member.
-4. Tasks are created in the configured destination (`GENERAL` company -> `General Project`) with the original message timestamp stored as the task's creation date.
+3. Pick the Gemini model and endpoint from the dropdown if you need to override the defaults (the values come from the `VITE_*` variables).
+4. Google Gemini parses the transcript, extracts action items, respects any explicit or strongly implied deadlines, and only assigns tasks if the named person already exists as a member.
+5. Tasks are created in the configured destination (`GENERAL` company -> `General Project`) with the original message timestamp stored as the task's creation date.
 
-Environment variables control the behaviour and can be overridden per deployment: `VITE_GEMINI_MODEL`, `VITE_WHATSAPP_LOOKBACK_DAYS`, `VITE_WHATSAPP_COMPANY_NAME`, `VITE_WHATSAPP_PROJECT_NAME`, `VITE_WHATSAPP_MAX_LINES`, and the optional `VITE_WHATSAPP_LOG_SHEET_ID` for future spreadsheet logging.
+> Tip: When you choose a `-latest` or numbered Gemini alias, the importer automatically retries the base model name and the alternate endpoint if the first request is not supported, so you rarely have to guess the exact combination manually.
+
+Environment variables control the behaviour and can be overridden per deployment: `VITE_GEMINI_MODEL`, `VITE_WHATSAPP_LOOKBACK_DAYS`, `VITE_WHATSAPP_COMPANY_NAME`, `VITE_WHATSAPP_PROJECT_NAME`, `VITE_WHATSAPP_ENDPOINT`, `VITE_WHATSAPP_MAX_LINES`, and the optional `VITE_WHATSAPP_LOG_SHEET_ID` for future spreadsheet logging.
 
 > Media OCR and spreadsheet logging hooks are stubbed in the codebase and can be enabled later without changing the importer UI.
 ## Customisation Notes

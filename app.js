@@ -19,6 +19,7 @@ const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
 const WHATSAPP_LOOKBACK_DAYS = Number.parseInt(import.meta.env.VITE_WHATSAPP_LOOKBACK_DAYS ?? "30", 10);
 const WHATSAPP_COMPANY_NAME = import.meta.env.VITE_WHATSAPP_COMPANY_NAME || "GENERAL";
 const WHATSAPP_PROJECT_NAME = import.meta.env.VITE_WHATSAPP_PROJECT_NAME || "General Project";
+const WHATSAPP_DEFAULT_ENDPOINT = (import.meta.env.VITE_WHATSAPP_ENDPOINT || "v1").toLowerCase() === "v1beta" ? "v1beta" : "v1";
 const MAX_WHATSAPP_LINES = Number.parseInt(import.meta.env.VITE_WHATSAPP_MAX_LINES ?? "2000", 10);
 const WHATSAPP_LOG_SHEET_ID = import.meta.env.VITE_WHATSAPP_LOG_SHEET_ID || "";
 
@@ -29,6 +30,8 @@ const DEFAULT_COMPANY = {
   isDefault: true,
   createdAt: new Date().toISOString(),
 };
+
+const ALL_COMPANY_ID = "company-all";
 
 const DEFAULT_PROJECT = {
   id: "inbox",
@@ -67,7 +70,7 @@ const DEFAULT_USERGUIDE = [
   "Moving work across companies? Edit the task (or project), choose the new project from the dropdown, and the linked company updates automatically while keeping task history intact.",
   "Use the Manage Members and Manage Departments buttons to keep team data current so you can assign tasks accurately and keep dashboard metrics meaningful.",
   "Before changing processes, export the workspace (Download button in the header) or copy the latest build so you always have a reference snapshot.",
-  "Keep this Userguide current: click Userguide → Edit guide whenever instructions change so the whole team sees the latest way of working.",
+  "Keep this Userguide current: click Userguide -> Edit guide whenever instructions change so the whole team sees the latest way of working.",
 ];
 
 const LEGACY_USERGUIDE_V1 = [
@@ -83,9 +86,10 @@ const LEGACY_USERGUIDE_V2 = [
   "Open the Project dropdown to jump into work inside that company. Use the + button to create new projects, or the pencil/bin icons beside a project to rename or delete it.",
   "Keep sections organised. Click Add section or use the menu on each column to rename or remove it, and drag section headers to change their order.",
   "Add tasks with the Quick Add form or from the board/list view. Set the project, section, due date, assignee, and priority, then drag cards between sections as work moves forward.",
-  "Need to move work between companies? Edit the task or project and pick the new project—its company automatically follows, and tasks keep their history.",
-  "Keep everyone aligned: update this Userguide whenever the process changes (Userguide → Edit guide) and export tasks regularly if you need an offline backup.",
+  "Need to move work between companies? Edit the task or project and pick the new project - its company automatically follows, and tasks keep their history.",
+  "Keep everyone aligned: update this Userguide whenever the process changes (Userguide -> Edit guide) and export tasks regularly if you need an offline backup.",
 ];
+const LEGACY_USERGUIDES = [LEGACY_USERGUIDE_V1, LEGACY_USERGUIDE_V2];
 
 const state = {
   tasks: [],
@@ -101,7 +105,8 @@ const state = {
   userguide: [...DEFAULT_USERGUIDE],
   viewMode: "list",
   searchTerm: "",
-  showCompleted: false,
+  activeTaskTab: "active",
+  activeAllTab: "created",
   metricsFilter: "all",
   editingTaskId: null,
   dragTaskId: null,
@@ -112,12 +117,13 @@ const state = {
   isEditingUserguide: false,
   openDropdown: null,
   dialogAttachmentDraft: [],
-  openSectionMenu: null,
   importJob: {
     file: null,
     status: "idle",
     error: "",
     stats: null,
+    model: GEMINI_MODEL,
+    endpoint: WHATSAPP_DEFAULT_ENDPOINT,
   },
   imports: {
     whatsapp: {},
@@ -154,11 +160,8 @@ const elements = {
   boardColumns: document.getElementById("boardColumns"),
   boardEmptyState: document.getElementById("boardEmptyState"),
   listView: document.getElementById("listView"),
-  taskList: document.getElementById("taskList"),
-  completedList: document.getElementById("completedList"),
-  toggleCompleted: document.getElementById("toggleCompleted"),
-  completedPlaceholder: document.querySelector('[data-empty-completed]'),
-  emptyState: document.getElementById("emptyState"),
+  taskTabList: document.getElementById("taskTabList"),
+  taskTabPanels: document.getElementById("taskTabPanels"),
   viewTitle: document.getElementById("viewTitle"),
   viewSubtitle: document.getElementById("viewSubtitle"),
   viewToggleButtons: [...document.querySelectorAll('[data-view-mode]')],
@@ -179,10 +182,8 @@ const elements = {
   activeTasksMetric: document.getElementById("active-tasks"),
   activityFeed: document.getElementById("activity-feed"),
   userguidePanel: document.getElementById("userguidePanel"),
-  companyDropdownToggle: document.getElementById("companyDropdownToggle"),
-  companyDropdownMenu: document.getElementById("companyDropdownMenu"),
-  companyDropdownList: document.getElementById("companyDropdownList"),
-  companyDropdownLabel: document.getElementById("companyDropdownLabel"),
+  companyTabs: document.getElementById("companyTabs"),
+  companyTabsEmpty: document.getElementById("companyTabsEmpty"),
   projectDropdownToggle: document.getElementById("projectDropdownToggle"),
   projectDropdownMenu: document.getElementById("projectDropdownMenu"),
   projectDropdownList: document.getElementById("projectDropdownList"),
@@ -201,6 +202,8 @@ const elements = {
   whatsappRangeLabel: document.querySelector("[data-whatsapp-range]"),
   whatsappSummary: document.querySelector("[data-whatsapp-summary]"),
   whatsappError: document.getElementById("whatsappError"),
+  whatsappModel: document.getElementById("whatsappModel"),
+  whatsappEndpoint: document.getElementById("whatsappEndpoint"),
 };
 
 
@@ -261,7 +264,8 @@ const savePreferences = () =>
     viewMode: state.viewMode,
     activeCompanyId: state.activeCompanyId,
     companyRecents: state.companyRecents,
-    showCompleted: state.showCompleted,
+    activeTaskTab: state.activeTaskTab,
+    activeAllTab: state.activeAllTab,
     metricsFilter: state.metricsFilter,
   });
 
@@ -279,8 +283,11 @@ const applyStoredPreferences = () => {
   if (prefs.companyRecents && typeof prefs.companyRecents === "object") {
     state.companyRecents = { ...prefs.companyRecents };
   }
-  if (typeof prefs.showCompleted === "boolean") {
-    state.showCompleted = prefs.showCompleted;
+  if (typeof prefs.activeTaskTab === "string") {
+    state.activeTaskTab = prefs.activeTaskTab;
+  }
+  if (typeof prefs.activeAllTab === "string") {
+    state.activeAllTab = prefs.activeAllTab;
   }
   if (typeof prefs.metricsFilter === "string") {
     state.metricsFilter = prefs.metricsFilter;
@@ -308,11 +315,12 @@ const getSectionsForProject = (projectId) =>
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 const getProjectsForCompany = (companyId) =>
   state.projects.filter((project) => project.companyId === companyId && !project.isDefault);
-const tasksForCompany = () =>
+const tasksForCompany = (companyId = state.activeCompanyId) =>
   state.tasks.filter((task) => {
-    if (!state.activeCompanyId) return true;
-    if (!task.companyId) return state.activeCompanyId === DEFAULT_COMPANY.id;
-    return task.companyId === state.activeCompanyId;
+    if (task.deletedAt) return false;
+    if (!companyId || companyId === ALL_COMPANY_ID) return true;
+    if (!task.companyId) return companyId === DEFAULT_COMPANY.id;
+    return task.companyId === companyId;
   });
 
 const rememberProjectSelection = (projectId) => {
@@ -436,9 +444,24 @@ const upgradeUserguideIfLegacy = () => {
 };
 
 const setActiveCompany = (companyId) => {
+  if (companyId === ALL_COMPANY_ID) {
+    if (state.activeCompanyId === ALL_COMPANY_ID) return;
+    state.activeCompanyId = ALL_COMPANY_ID;
+    state.activeView = { type: "view", value: "inbox" };
+    state.activeTaskTab = "active";
+    state.activeAllTab = "created";
+    if (state.viewMode === "board") {
+      state.viewMode = "list";
+    }
+    savePreferences();
+    render();
+    return;
+  }
+
   const company = getCompanyById(companyId);
   if (!company || state.activeCompanyId === companyId) return;
   state.activeCompanyId = companyId;
+  state.activeTaskTab = "active";
   const remembered = state.companyRecents[companyId];
   const rememberedProject = remembered ? getProjectById(remembered) : null;
   if (rememberedProject) {
@@ -738,6 +761,9 @@ const ensureTaskDefaults = (task) => {
   if (!task.updatedAt) {
     task.updatedAt = task.createdAt;
   }
+  if (typeof task.deletedAt !== "string") {
+    task.deletedAt = null;
+  }
   if (!Array.isArray(task.attachments)) {
     task.attachments = [];
   }
@@ -786,6 +812,7 @@ const matchesActiveView = (task) => {
   today.setHours(0, 0, 0, 0);
   const matchesCompany =
     !state.activeCompanyId ||
+    state.activeCompanyId === ALL_COMPANY_ID ||
     task.companyId === state.activeCompanyId ||
     (!task.companyId && state.activeCompanyId === DEFAULT_COMPANY.id);
   if (!matchesCompany) return false;
@@ -843,70 +870,76 @@ const setSearchTerm = (value) => {
 };
 
 const tasksForCurrentView = () =>
-  state.tasks.filter((task) => matchesActiveView(task) && matchesSearch(task));
+  state.tasks.filter((task) => !task.deletedAt && matchesActiveView(task) && matchesSearch(task));
 
 const openTasks = (tasks) => tasks.filter((task) => !task.completed);
 const completedTasks = (tasks) => tasks.filter((task) => task.completed);
 
-const renderCompanyDropdown = () => {
-  if (!elements.companyDropdownList) return;
+const renderCompanyTabs = () => {
+  if (!elements.companyTabs) return;
   const fragment = document.createDocumentFragment();
-  if (!state.companies.length) {
-    const empty = document.createElement("li");
-    empty.className = "text-sm text-slate-500 px-2 py-1.5";
-    empty.textContent = "Add your first company.";
-    fragment.append(empty);
-  } else {
-    state.companies.forEach((company) => {
-      const item = document.createElement("li");
-      item.className = "selector-item";
-      const select = document.createElement("button");
-      select.type = "button";
-      select.dataset.select = "company";
-      select.dataset.companyId = company.id;
-      select.setAttribute("role", "option");
-      const isActive = company.id === state.activeCompanyId;
-      select.classList.toggle("active", isActive);
-      select.setAttribute("aria-selected", String(isActive));
-      select.textContent = company.name;
-      const meta = document.createElement("small");
-      const projectCount = getProjectsForCompany(company.id).length;
-      meta.textContent = projectCount
-        ? `${projectCount} project${projectCount === 1 ? "" : "s"}`
-        : "No projects yet";
-      select.append(meta);
+  const makeTabButton = (companyId, label) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "toggle-pill";
+    button.dataset.companyTab = companyId;
+    const isActive =
+      companyId === (state.activeCompanyId || DEFAULT_COMPANY.id) ||
+      (!state.activeCompanyId && companyId === DEFAULT_COMPANY.id);
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+    button.textContent = label;
+    return button;
+  };
 
-      const actions = document.createElement("div");
-      actions.className = "selector-item-actions";
-      const edit = document.createElement("button");
-      edit.type = "button";
-      edit.className = "selector-action-btn";
-      edit.dataset.action = "edit-company";
-      edit.dataset.companyId = company.id;
-      edit.setAttribute("aria-label", `Rename ${company.name}`);
-      edit.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 20h4l10-10-4-4L4 16v4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="m14 6 4 4" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
-      const remove = document.createElement("button");
-      remove.type = "button";
-      remove.className = "selector-action-btn";
-      remove.dataset.action = "delete-company";
-      remove.dataset.companyId = company.id;
-      remove.setAttribute("aria-label", `Delete ${company.name}`);
-      remove.disabled = Boolean(company.isDefault);
-      remove.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 7h12m-9 0V5h6v2m-1 3v7m-4-7v7M7 7l1 12h8l1-12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
-      actions.append(edit, remove);
-      item.append(select, actions);
-      fragment.append(item);
-    });
-  }
-  elements.companyDropdownList.replaceChildren(fragment);
-  if (elements.companyDropdownLabel) {
-    const activeCompany = getCompanyById(state.activeCompanyId);
-    elements.companyDropdownLabel.textContent = activeCompany ? activeCompany.name : "Select company";
+  const allWrapper = document.createElement("div");
+  allWrapper.className = "company-tab";
+  const allButton = makeTabButton(ALL_COMPANY_ID, "All");
+  const allActive = state.activeCompanyId === ALL_COMPANY_ID;
+  allButton.classList.toggle("active", allActive);
+  allButton.setAttribute("aria-pressed", String(allActive));
+  allWrapper.append(allButton);
+  fragment.append(allWrapper);
+
+  state.companies.forEach((company) => {
+    const wrapper = document.createElement("div");
+    wrapper.className = "company-tab";
+    const select = makeTabButton(company.id, company.name);
+    select.classList.toggle("active", company.id === state.activeCompanyId);
+    select.setAttribute("aria-pressed", String(company.id === state.activeCompanyId));
+    wrapper.append(select);
+
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.className = "company-tab__edit";
+    edit.dataset.action = "edit-company";
+    edit.dataset.companyId = company.id;
+    edit.textContent = "Edit";
+    wrapper.append(edit);
+    fragment.append(wrapper);
+  });
+
+  elements.companyTabs.replaceChildren(fragment);
+  if (elements.companyTabsEmpty) {
+    elements.companyTabsEmpty.hidden = state.companies.length !== 0;
   }
 };
 
 const renderProjectDropdown = () => {
   if (!elements.projectDropdownList) return;
+  if (elements.projectDropdownToggle) {
+    elements.projectDropdownToggle.disabled = state.activeCompanyId === ALL_COMPANY_ID;
+  }
+  if (state.activeCompanyId === ALL_COMPANY_ID) {
+    elements.projectDropdownList.replaceChildren();
+    if (elements.projectDropdownLabel) {
+      elements.projectDropdownLabel.textContent = "All projects";
+    }
+    if (elements.projectDropdownMenu) {
+      elements.projectDropdownMenu.setAttribute("hidden", "");
+    }
+    return;
+  }
   const fragment = document.createDocumentFragment();
   const scopedTasks = tasksForCompany();
   const projects = getProjectsForCompany(state.activeCompanyId);
@@ -963,15 +996,7 @@ const renderProjectDropdown = () => {
       edit.dataset.projectId = project.id;
       edit.setAttribute("aria-label", `Rename ${project.name}`);
       edit.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 20h4l10-10-4-4L4 16v4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="m14 6 4 4" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
-      const remove = document.createElement("button");
-      remove.type = "button";
-      remove.className = "selector-action-btn";
-      remove.dataset.action = "delete-project";
-      remove.dataset.projectId = project.id;
-      remove.setAttribute("aria-label", `Delete ${project.name}`);
-      remove.disabled = Boolean(project.isDefault);
-      remove.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 7h12m-9 0V5h6v2m-1 3v7m-4-7v7M7 7l1 12h8l1-12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
-      actions.append(edit, remove);
+      actions.append(edit);
       item.append(select, actions);
       fragment.append(item);
     });
@@ -1030,7 +1055,7 @@ const populateProjectOptions = () => {
     const option = document.createElement("option");
     option.value = project.id;
     const company = getCompanyById(project.companyId);
-    option.textContent = company && !company.isDefault ? `${project.name} · ${company.name}` : project.name;
+    option.textContent = company && !company.isDefault ? `${project.name} - ${company.name}` : project.name;
     return option;
   });
 
@@ -1157,6 +1182,9 @@ const updateActiveNav = () => {
 };
 
 const describeView = () => {
+  if (state.activeCompanyId === ALL_COMPANY_ID) {
+    return { title: "All Activity", subtitle: "Latest updates across all companies." };
+  }
   const { type, value } = state.activeView;
   if (type === "view") {
     if (value === "inbox") {
@@ -1180,7 +1208,7 @@ const describeView = () => {
       const company = getCompanyById(project.companyId);
       return {
         title: project.name,
-        subtitle: company ? `${company.name} · Project board` : "View tasks scoped to this project.",
+        subtitle: company ? `${company.name} - Project board` : "View tasks scoped to this project.",
       };
     }
   }
@@ -1249,6 +1277,17 @@ const buildMeta = (task, container) => {
       pushMetaChip(container, `Created ${createdLabel}`, "meta-chip subtle");
     }
   }
+  if (task.deletedAt) {
+    const deletedDate = new Date(task.deletedAt);
+    if (!Number.isNaN(deletedDate.getTime())) {
+      const deletedLabel = new Intl.DateTimeFormat(undefined, {
+        month: "short",
+        day: "numeric",
+        year: deletedDate.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined,
+      }).format(deletedDate);
+      pushMetaChip(container, `Deleted ${deletedLabel}`, "meta-chip danger");
+    }
+  }
 
   const section = getSectionById(task.sectionId);
   if (section && !(state.viewMode === "board" && state.activeView.type === "project")) {
@@ -1287,6 +1326,13 @@ const renderTaskItem = (task) => {
   titleEl.title = task.description ?? "";
   checkbox.checked = task.completed;
   item.classList.toggle("completed", task.completed);
+  if (task.deletedAt) {
+    item.classList.add("deleted");
+    checkbox.disabled = true;
+  } else {
+    checkbox.disabled = false;
+    item.classList.remove("deleted");
+  }
 
   buildMeta(task, metaEl);
 
@@ -1302,19 +1348,243 @@ const renderTaskItem = (task) => {
   return item;
 };
 
-const renderListView = (tasks) => {
-  const active = openTasks(tasks).sort(compareTasks);
-  const completed = completedTasks(tasks).sort(compareTasks);
-
-  elements.taskList.replaceChildren(...active.map(renderTaskItem));
-  elements.completedList.replaceChildren(...completed.map(renderTaskItem));
-
-  elements.emptyState.hidden = active.length !== 0;
-  elements.completedList.classList.toggle("hidden", !state.showCompleted);
-  if (elements.completedPlaceholder) {
-    elements.completedPlaceholder.hidden = completed.length !== 0;
+const renderTaskTabs = (tabs, activeTab) => {
+  if (!elements.taskTabList) return;
+  if (tabs.length <= 1) {
+    elements.taskTabList.replaceChildren();
+    elements.taskTabList.hidden = true;
+    return;
   }
-  elements.toggleCompleted.textContent = state.showCompleted ? "Hide completed" : "Show completed";
+
+  const fragment = document.createDocumentFragment();
+  tabs.forEach(({ id, label }) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "toggle-pill";
+    button.dataset.taskTab = id;
+    const isActive = id === activeTab;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+    button.textContent = label;
+    fragment.append(button);
+  });
+
+  elements.taskTabList.hidden = false;
+  elements.taskTabList.replaceChildren(fragment);
+};
+
+const createEmptyState = (message) => {
+  const empty = document.createElement("p");
+  empty.className = "empty-state";
+  empty.textContent = message;
+  return empty;
+};
+
+const getDeletedTasksForProject = (projectId) =>
+  state.tasks.filter(
+    (task) => task.projectId === projectId && task.deletedAt && matchesSearch(task)
+  );
+
+const renderProjectSectionsList = (
+  projectId,
+  tasks,
+  {
+    includeEmpty = true,
+    emptyMessage = "No tasks recorded for this project yet.",
+    emptySectionMessage = "No tasks in this section.",
+    sorter = compareTasks,
+  } = {}
+) => {
+  const container = document.createElement("div");
+  container.className = "list-sections space-y-4";
+  const sections = getSectionsForProject(projectId);
+
+  if (!sections.length) {
+    container.append(createEmptyState(emptyMessage));
+    return container;
+  }
+
+  sections.forEach((section) => {
+    const sectionTasks = tasks.filter((task) => task.sectionId === section.id);
+    if (!includeEmpty && sectionTasks.length === 0) {
+      return;
+    }
+
+    const card = document.createElement("article");
+    card.className = "list-section";
+    card.dataset.sectionId = section.id;
+
+    const header = document.createElement("header");
+    header.className = "list-section__header";
+
+    const title = document.createElement("h4");
+    title.textContent = section.name;
+    header.append(title);
+
+    const count = document.createElement("span");
+    count.className = "list-section__count";
+    count.textContent = String(sectionTasks.length);
+    header.append(count);
+
+    const actions = document.createElement("div");
+    actions.className = "list-section__actions";
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.className = "ghost-button small";
+    edit.dataset.action = "edit-section";
+    edit.dataset.sectionId = section.id;
+    edit.textContent = "Edit";
+    actions.append(edit);
+    header.append(actions);
+    card.append(header);
+
+    const list = document.createElement("ul");
+    list.className = "task-list";
+    if (sectionTasks.length) {
+      sectionTasks.sort(sorter).forEach((task) => list.append(renderTaskItem(task)));
+    }
+    card.append(list);
+
+    if (!sectionTasks.length && includeEmpty) {
+      const placeholder = document.createElement("p");
+      placeholder.className = "list-section__empty";
+      placeholder.textContent = emptySectionMessage;
+      card.append(placeholder);
+    }
+
+    container.append(card);
+  });
+
+  if (!container.childElementCount) {
+    container.append(createEmptyState(emptyMessage));
+  }
+
+  return container;
+};
+
+const renderSimpleTaskList = (tasks, emptyMessage) => {
+  const container = document.createElement("div");
+  if (tasks.length) {
+    const list = document.createElement("ul");
+    list.className = "task-list";
+    tasks.forEach((task) => list.append(renderTaskItem(task)));
+    container.append(list);
+    return container;
+  }
+  container.append(createEmptyState(emptyMessage));
+  return container;
+};
+
+const renderAllTaskOverview = () => {
+  if (!elements.taskTabPanels || !elements.taskTabList) return;
+  const tabs = [
+    { id: "created", label: "Created" },
+    { id: "updated", label: "Updated" },
+    { id: "deleted", label: "Deleted" },
+  ];
+  if (!tabs.some((tab) => tab.id === state.activeAllTab)) {
+    state.activeAllTab = "created";
+  }
+  renderTaskTabs(tabs, state.activeAllTab);
+
+  const panel = document.createElement("div");
+  panel.className = "task-pane";
+
+  let scopedTasks = [];
+  if (state.activeAllTab === "created") {
+    scopedTasks = state.tasks
+      .filter((task) => !task.deletedAt && matchesSearch(task))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  } else if (state.activeAllTab === "updated") {
+    scopedTasks = state.tasks
+      .filter((task) => !task.deletedAt && matchesSearch(task))
+      .sort(
+        (a, b) =>
+          new Date(b.updatedAt || b.createdAt).getTime() -
+          new Date(a.updatedAt || a.createdAt).getTime()
+      );
+  } else {
+    scopedTasks = state.tasks
+      .filter((task) => task.deletedAt && matchesSearch(task))
+      .sort((a, b) => new Date(b.deletedAt ?? 0).getTime() - new Date(a.deletedAt ?? 0).getTime());
+  }
+
+  panel.append(
+    renderSimpleTaskList(
+      scopedTasks,
+      state.activeAllTab === "deleted"
+        ? "No deleted tasks yet."
+        : "No tasks match this filter right now."
+    )
+  );
+  elements.taskTabPanels.replaceChildren(panel);
+};
+
+const renderListView = (tasks) => {
+  if (!elements.taskTabPanels || !elements.taskTabList) return;
+
+  if (state.activeCompanyId === ALL_COMPANY_ID) {
+    renderAllTaskOverview();
+    return;
+  }
+
+  const isProjectScope = state.activeView.type === "project";
+  const tabs = isProjectScope
+    ? [
+        { id: "active", label: "Active" },
+        { id: "completed", label: "Completed" },
+        { id: "deleted", label: "Deleted" },
+      ]
+    : [{ id: "active", label: "Active" }];
+
+  if (!tabs.some((tab) => tab.id === state.activeTaskTab)) {
+    state.activeTaskTab = "active";
+  }
+
+  renderTaskTabs(tabs, state.activeTaskTab);
+
+  const panel = document.createElement("div");
+  panel.className = "task-pane";
+
+  if (state.activeTaskTab === "active") {
+    const activeTasks = openTasks(tasks).sort(compareTasks);
+    if (isProjectScope) {
+      panel.append(
+        renderProjectSectionsList(state.activeView.value, activeTasks, {
+          includeEmpty: true,
+          emptyMessage: "Add a section to start organising this project.",
+          emptySectionMessage: "No tasks in this section yet.",
+        })
+      );
+    } else {
+      panel.append(
+        renderSimpleTaskList(activeTasks, "No tasks here yet. Add one to get started.")
+      );
+    }
+  } else if (state.activeTaskTab === "completed") {
+    const completed = completedTasks(tasks).sort(compareTasks);
+    panel.append(
+      renderProjectSectionsList(state.activeView.value, completed, {
+        includeEmpty: false,
+        emptyMessage: "No completed tasks yet.",
+      })
+    );
+  } else if (state.activeTaskTab === "deleted") {
+    const deleted = getDeletedTasksForProject(state.activeView.value).sort(
+      (a, b) => new Date(b.deletedAt ?? 0).getTime() - new Date(a.deletedAt ?? 0).getTime()
+    );
+    panel.append(
+      renderProjectSectionsList(state.activeView.value, deleted, {
+        includeEmpty: false,
+        emptyMessage: "No deleted tasks archived for this project.",
+        emptySectionMessage: "No deleted tasks for this section.",
+        sorter: (a, b) =>
+          new Date(b.deletedAt ?? 0).getTime() - new Date(a.deletedAt ?? 0).getTime(),
+      })
+    );
+  }
+
+  elements.taskTabPanels.replaceChildren(panel);
 };
 const createBoardCard = (task) => {
   const card = document.createElement("div");
@@ -1383,29 +1653,16 @@ const createBoardColumn = (section, tasks) => {
   count.textContent = tasks.length;
   header.append(count);
 
-  const menuWrapper = document.createElement("div");
-  menuWrapper.className = "section-menu-wrapper";
-  const menuButton = document.createElement("button");
-  menuButton.type = "button";
-  menuButton.className = "section-menu-button";
-  menuButton.dataset.action = "section-menu";
-  menuButton.dataset.sectionId = section.id;
-  menuButton.innerHTML = '<span class="sr-only">Section actions</span><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h.01M12 12h.01M19 12h.01"/></svg>';
-  const menu = document.createElement("div");
-  menu.className = "section-menu";
-  if (!section.locked && getSectionsForProject(section.projectId).length > 1) {
-    const deleteBtn = document.createElement("button");
-    deleteBtn.type = "button";
-    deleteBtn.dataset.action = "section-delete";
-    deleteBtn.dataset.sectionId = section.id;
-    deleteBtn.className = "danger";
-    deleteBtn.textContent = "Delete section";
-    menu.append(deleteBtn);
-  }
-  if (menu.childElementCount) {
-    menuWrapper.append(menuButton, menu);
-    header.append(menuWrapper);
-  }
+  const actions = document.createElement("div");
+  actions.className = "section-actions";
+  const editButton = document.createElement("button");
+  editButton.type = "button";
+  editButton.className = "ghost-button small";
+  editButton.dataset.action = "edit-section";
+  editButton.dataset.sectionId = section.id;
+  editButton.textContent = "Edit";
+  actions.append(editButton);
+  header.append(actions);
 
   column.append(header);
 
@@ -1427,7 +1684,6 @@ const createBoardColumn = (section, tasks) => {
 };
 
 const renderBoardView = (tasks) => {
-  closeSectionMenu();
   if (state.activeView.type !== "project") {
     elements.boardColumns.replaceChildren();
     elements.boardEmptyState.hidden = false;
@@ -1460,6 +1716,11 @@ const renderBoardView = (tasks) => {
 
 const renderTasks = () => {
   const tasks = tasksForCurrentView();
+  if (state.activeCompanyId === ALL_COMPANY_ID && state.viewMode !== "list") {
+    state.viewMode = "list";
+    updateViewToggleButtons();
+    applyViewVisibility();
+  }
   if (state.viewMode === "board") {
     renderBoardView(tasks);
   } else {
@@ -1543,10 +1804,16 @@ const renderActivityFeed = () => {
     fragment.append(empty);
   } else {
     recent.forEach((task) => {
-      const item = document.createElement("div");
-      item.className = "activity-item bg-slate-50 border border-slate-200 rounded-xl px-3 py-2";
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "activity-item bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-left";
+      item.dataset.taskLink = task.id;
+      item.setAttribute("aria-label", `Open task "${task.title}"`);
+      if (task.deletedAt) {
+        item.classList.add("activity-item--deleted");
+      }
 
-      const title = document.createElement("p");
+      const title = document.createElement("span");
       title.className = "text-sm font-medium text-slate-800";
       title.textContent = task.title;
 
@@ -1562,6 +1829,14 @@ const renderActivityFeed = () => {
         projectChip.className = "chip";
         projectChip.textContent = project.name;
         meta.append(projectChip);
+      }
+
+      const company = getCompanyById(task.companyId);
+      if (company && state.activeCompanyId === ALL_COMPANY_ID) {
+        const companyChip = document.createElement("span");
+        companyChip.className = "chip subtle";
+        companyChip.textContent = company.name;
+        meta.append(companyChip);
       }
 
       const member = getMemberById(task.assigneeId);
@@ -1650,7 +1925,7 @@ const applySettings = () => {
 };
 
 const renderSidebar = () => {
-  renderCompanyDropdown();
+  renderCompanyTabs();
   renderProjectDropdown();
   updateActiveNav();
   updateViewCounts();
@@ -1709,6 +1984,9 @@ const setActiveView = (type, value) => {
   }
 
   state.activeView = { type: nextType, value: nextValue };
+  if (nextType !== "project") {
+    state.activeTaskTab = "active";
+  }
   if (state.viewMode === "board" && nextType !== "project") {
     state.viewMode = "list";
   }
@@ -1738,6 +2016,7 @@ const addTask = (payload) => {
     completed: false,
     createdAt,
     updatedAt: now,
+    deletedAt: null,
   };
 
   state.tasks.push(task);
@@ -1791,7 +2070,12 @@ const updateTask = (taskId, updates) => {
 };
 
 const removeTask = (taskId) => {
-  state.tasks = state.tasks.filter((task) => task.id !== taskId);
+  const index = state.tasks.findIndex((task) => task.id === taskId);
+  if (index === -1) return;
+  const previous = state.tasks[index];
+  if (previous.deletedAt) return;
+  const now = new Date().toISOString();
+  state.tasks[index] = { ...previous, deletedAt: now, updatedAt: now };
   saveTasks();
   render();
 };
@@ -1840,6 +2124,24 @@ const createSection = (projectId, name) => {
   state.sections.push(section);
   saveSections();
   return section;
+};
+
+const renameSection = (sectionId, nextName) => {
+  const section = getSectionById(sectionId);
+  if (!section) return;
+  const trimmed = nextName.trim();
+  if (!trimmed || trimmed === section.name) return;
+  const duplicate = getSectionsForProject(section.projectId).some(
+    (entry) => entry.id !== sectionId && entry.name.toLowerCase() === trimmed.toLowerCase()
+  );
+  if (duplicate) {
+    window.alert("Another section in this project already uses that name.");
+    return;
+  }
+  section.name = trimmed;
+  section.updatedAt = new Date().toISOString();
+  saveSections();
+  render();
 };
 
 const deleteSection = (sectionId) => {
@@ -1943,7 +2245,7 @@ const createCompany = (name) => {
   state.companyRecents[company.id] = "";
   saveCompanies();
   savePreferences();
-  renderCompanyDropdown();
+  renderCompanyTabs();
   renderProjectDropdown();
   return company;
 };
@@ -1963,7 +2265,7 @@ const renameCompany = (companyId, nextName) => {
   company.name = trimmed;
   company.updatedAt = new Date().toISOString();
   saveCompanies();
-  renderCompanyDropdown();
+  renderCompanyTabs();
   renderProjectDropdown();
   renderHeader();
 };
@@ -2209,6 +2511,13 @@ const handleTaskActionClick = (event) => {
   const button = event.target.closest("[data-action]");
   if (!button) return;
   const action = button.dataset.action;
+  if (action === "edit-section") {
+    const sectionId = button.dataset.sectionId;
+    if (sectionId) {
+      openSectionEditor(sectionId);
+    }
+    return;
+  }
   const item = button.closest(".task-item");
   if (!item) return;
   const taskId = item.dataset.taskId;
@@ -2367,12 +2676,6 @@ const handleSearchInput = (event) => {
   setSearchTerm(event.target.value);
 };
 
-const handleToggleCompleted = () => {
-  state.showCompleted = !state.showCompleted;
-  savePreferences();
-  renderTasks();
-};
-
 const handleAddProject = () => {
   if (!state.activeCompanyId) {
     window.alert("Create a company before adding projects.");
@@ -2488,6 +2791,32 @@ const closeTaskDialog = () => {
   }
 };
 
+const navigateToTask = (taskId) => {
+  const task = state.tasks.find((entry) => entry.id === taskId);
+  if (!task) return;
+  const project = getProjectById(task.projectId);
+  const companyId = project?.companyId ?? DEFAULT_COMPANY.id;
+
+  if (state.activeCompanyId !== companyId) {
+    setActiveCompany(companyId);
+  }
+
+  if (task.projectId === "inbox") {
+    setActiveView("view", "inbox");
+  } else {
+    setActiveView("project", task.projectId);
+  }
+
+  state.activeTaskTab = "active";
+  state.activeAllTab = "created";
+
+  if (state.viewMode !== "list") {
+    setViewMode("list");
+  }
+
+  window.requestAnimationFrame(() => openTaskDialog(taskId));
+};
+
 const handleDialogSubmit = (event) => {
   event.preventDefault();
   if (!state.editingTaskId) return;
@@ -2575,48 +2904,112 @@ const handleAddSection = () => {
   }
 };
 
-const handleCompanyMenuClick = (event) => {
-  const addButton = event.target.closest('[data-action="add-company"]');
-  if (addButton) {
-    const name = window.prompt("Company name");
-    if (name) {
-      const company = createCompany(name);
-      if (company) {
-        setActiveCompany(company.id);
-        const projectName = window.prompt("Add a first project for this company?");
-        if (projectName) {
-          createProject(projectName, company.id);
-        } else {
-          renderProjectDropdown();
-        }
-      }
+const promptCreateCompany = () => {
+  const name = window.prompt("Company name");
+  if (!name) return;
+  const company = createCompany(name);
+  if (!company) return;
+  setActiveCompany(company.id);
+  const projectName = window.prompt("Add a first project for this company?");
+  if (projectName) {
+    createProject(projectName, company.id);
+  } else {
+    renderProjectDropdown();
+  }
+};
+
+const openCompanyEditor = (companyId) => {
+  const company = getCompanyById(companyId);
+  if (!company) return;
+  const nextName = window.prompt("Rename company", company.name);
+  if (nextName && nextName.trim() && nextName.trim() !== company.name) {
+    renameCompany(company.id, nextName);
+  }
+  if (!company.isDefault) {
+    const confirmDelete = window.confirm(
+      `Delete the company "${company.name}"? All related projects, sections, and tasks will be removed.`
+    );
+    if (confirmDelete) {
+      deleteCompany(company.id);
     }
-    closeDropdown("company");
+  }
+};
+
+const handleCompanyTabsClick = (event) => {
+  const editButton = event.target.closest('[data-action="edit-company"]');
+  if (editButton) {
+    event.preventDefault();
+    openCompanyEditor(editButton.dataset.companyId);
     return;
   }
-
-  const renameButton = event.target.closest('[data-action="edit-company"]');
-  if (renameButton) {
-    const company = getCompanyById(renameButton.dataset.companyId);
-    if (!company) return;
-    const nextName = window.prompt("Rename company", company.name);
-    if (nextName) {
-      renameCompany(company.id, nextName);
-    }
-    return;
+  const tabButton = event.target.closest("button[data-company-tab]");
+  if (tabButton) {
+    event.preventDefault();
+    setActiveCompany(tabButton.dataset.companyTab);
   }
+};
 
-  const deleteButton = event.target.closest('[data-action="delete-company"]');
-  if (deleteButton) {
-    deleteCompany(deleteButton.dataset.companyId);
-    closeDropdown("company");
-    return;
+const handleTaskTabListClick = (event) => {
+  const button = event.target.closest("button[data-task-tab]");
+  if (!button) return;
+  event.preventDefault();
+  const tabId = button.dataset.taskTab;
+  if (state.activeCompanyId === ALL_COMPANY_ID) {
+    if (tabId === state.activeAllTab) return;
+    state.activeAllTab = tabId;
+  } else {
+    if (tabId === state.activeTaskTab) return;
+    state.activeTaskTab = tabId;
   }
+  savePreferences();
+  renderTasks();
+};
 
-  const selectButton = event.target.closest('button[data-select="company"]');
-  if (selectButton) {
-    setActiveCompany(selectButton.dataset.companyId);
-    closeDropdown("company");
+const handleGlobalActionClick = (event) => {
+  const addCompany = event.target.closest('[data-action="add-company"]');
+  if (addCompany) {
+    event.preventDefault();
+    promptCreateCompany();
+  }
+};
+
+const handleActivityClick = (event) => {
+  const button = event.target.closest("[data-task-link]");
+  if (!button) return;
+  event.preventDefault();
+  navigateToTask(button.dataset.taskLink);
+};
+
+const openProjectEditor = (projectId) => {
+  const project = getProjectById(projectId);
+  if (!project) return;
+  const nextName = window.prompt("Rename project", project.name);
+  if (nextName && nextName.trim() && nextName.trim() !== project.name) {
+    renameProject(project.id, nextName);
+  }
+  if (project.isDefault) return;
+  const confirmDelete = window.confirm(
+    `Delete the project "${project.name}"? All sections and tasks inside will be removed.`
+  );
+  if (confirmDelete) {
+    deleteProject(project.id);
+  }
+};
+
+const openSectionEditor = (sectionId) => {
+  const section = getSectionById(sectionId);
+  if (!section) return;
+  const nextName = window.prompt("Rename section", section.name);
+  if (nextName && nextName.trim() && nextName.trim() !== section.name) {
+    renameSection(section.id, nextName);
+  }
+  const sections = getSectionsForProject(section.projectId);
+  if (sections.length <= 1) return;
+  const confirmDelete = window.confirm(
+    `Delete the section "${section.name}"? Tasks inside will move to the first remaining section.`
+  );
+  if (confirmDelete) {
+    deleteSection(section.id);
   }
 };
 
@@ -2635,20 +3028,9 @@ const handleProjectMenuClick = (event) => {
     return;
   }
 
-  const renameButton = event.target.closest('[data-action="edit-project"]');
-  if (renameButton) {
-    const project = getProjectById(renameButton.dataset.projectId);
-    if (!project) return;
-    const nextName = window.prompt("Rename project", project.name);
-    if (nextName) {
-      renameProject(project.id, nextName);
-    }
-    return;
-  }
-
-  const deleteButton = event.target.closest('[data-action="delete-project"]');
-  if (deleteButton) {
-    deleteProject(deleteButton.dataset.projectId);
+  const editButton = event.target.closest('[data-action="edit-project"]');
+  if (editButton) {
+    openProjectEditor(editButton.dataset.projectId);
     closeDropdown("project");
     return;
   }
@@ -2685,53 +3067,14 @@ const handleUserguideSave = (event) => {
 };
 
 const handleBoardClick = (event) => {
-  const menuTrigger = event.target.closest('[data-action="section-menu"]');
-  if (menuTrigger) {
-    toggleSectionMenu(menuTrigger.dataset.sectionId, menuTrigger);
-    return;
+  const editButton = event.target.closest('[data-action="edit-section"]');
+  if (editButton) {
+    event.preventDefault();
+    openSectionEditor(editButton.dataset.sectionId);
   }
-
-  const deleteButton = event.target.closest('[data-action="section-delete"]');
-  if (deleteButton) {
-    closeSectionMenu();
-    const sectionId = deleteButton.dataset.sectionId;
-    if (sectionId) {
-      deleteSection(sectionId);
-    }
-  }
-};
-
-const toggleSectionMenu = (sectionId, trigger) => {
-  if (!elements.boardColumns) return;
-  const wrapper = trigger?.closest('.section-menu-wrapper');
-  const menu = wrapper?.querySelector('.section-menu');
-  if (!menu) return;
-
-  if (state.openSectionMenu && state.openSectionMenu.menu !== menu) {
-    closeSectionMenu();
-  }
-
-  const isOpen = menu.classList.contains('open');
-  if (isOpen) {
-    closeSectionMenu();
-    return;
-  }
-
-  menu.classList.add('open');
-  state.openSectionMenu = { sectionId, menu };
-};
-
-const closeSectionMenu = () => {
-  if (!state.openSectionMenu) return;
-  state.openSectionMenu.menu.classList.remove('open');
-  state.openSectionMenu = null;
 };
 
 const dropdownElements = {
-  company: () => ({
-    toggle: elements.companyDropdownToggle,
-    menu: elements.companyDropdownMenu,
-  }),
   project: () => ({
     toggle: elements.projectDropdownToggle,
     menu: elements.projectDropdownMenu,
@@ -2925,7 +3268,7 @@ const formatDateRange = (start, end) => {
     year: start.getFullYear() !== end.getFullYear() || start.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined,
   });
   if (sameDay) return formatter.format(end);
-  return `${formatter.format(start)} – ${formatter.format(end)}`;
+  return `${formatter.format(start)} - ${formatter.format(end)}`;
 };
 
 const buildTranscript = (messages) =>
@@ -2990,85 +3333,274 @@ const parseGeminiJson = (payload) => {
   return [];
 };
 
-const callGeminiForActionItems = async ({ chatName, transcript, allowedAssignees }) => {
+const callGeminiForActionItems = async ({
+  chatName,
+  transcript,
+  allowedAssignees,
+  model = GEMINI_MODEL,
+  endpoint = "v1",
+}) => {
   if (!GEMINI_API_KEY) {
     throw new Error("Set VITE_GEMINI_API_KEY to enable WhatsApp imports.");
   }
-  if (!transcript) return [];
+  if (!transcript) return { items: [], endpointUsed: endpoint, modelUsed: model };
+
+  const normaliseModel = (value) => {
+    if (!value || typeof value !== "string") return "";
+    return value.replace(/^models\//i, "").replace(/:generateContent$/i, "").trim();
+  };
+  const isStructuredModel = (value) => /^gemini-2\./i.test(value);
 
   const allowedNames = allowedAssignees.map((entry) => entry.name).filter(Boolean);
   const instructions = [
-    "You are extracting actionable tasks from a WhatsApp chat transcript.",
+    "You are an AI assistant analysing WhatsApp group conversations to extract actionable tasks.",
     `Chat name: ${chatName}`,
-    "The transcript contains lines formatted as: [index] ISO_TIMESTAMP | sender: message",
-    "Return ONLY JSON (do not wrap in code fences). The JSON must be an array of objects with these fields:",
-    '- "title": short imperative summary of the action item.',
-    '- "description": fuller explanation including relevant context and next steps.',
-    '- "assignee": exactly match one of the allowed names below; if nobody applies, use null.',
-    '- "dueDate": ISO date string (YYYY-MM-DD) if an explicit or strongly implied deadline exists, otherwise null.',
-    '- "priority": one of ["critical","very-high","high","medium","low","optional"] (default to "medium").',
-    '- "sourceTimestamp": copy the ISO timestamp from the transcript line that triggered the action.',
-    '- "sourceSender": the name of the person who stated the action item.',
-    "Only include genuine action items, commitments, or requests that require follow-up.",
-    `Allowed assignees: ${allowedNames.length ? allowedNames.join(", ") : "(none)"}.`,
-    "If no action items are present, return an empty JSON array.",
+    "The transcript you receive already begins at the earliest message that must be processed (last recorded import or the 30-day window). Ignore anything before the first line; read every remaining message in order.",
+    "Each transcript line has the form: [index] ISO_TIMESTAMP | sender: message",
+    "",
+    "Extraction rules",
+    "• Only capture genuine action items: explicit requests, commitments, delegations, or clear plans that describe what must happen. Skip greetings, confirmations, vague intent, or questions unless they contain a concrete next step.",
+    "• Treat names consistently. Remove @ prefixes, prefer real names whenever they appear anywhere in the chat, and only fall back to a phone number (wrapped in single quotes) when no name exists at all.",
+    "• If several people are asked to do something, list them all in the assignee field. If nobody is clearly responsible, set assignee to null (do not invent one).",
+    "• Convert any relative timing (“tomorrow”, “Friday”, “next week”) into an absolute date in US Eastern Time (America/New_York). If no timing is given, return null.",
+    '• Assign one of these priorities exactly: "critical", "very-high", "high", "medium", "low", "optional".',
+    "  – critical: emergency, immediate business impact, or language such as “ASAP / now”.",
+    "  – very-high: explicitly urgent or blocking core work.",
+    "  – high: specific short-term deadline (e.g., due in a few days) or clearly important follow-up.",
+    "  – medium: normal follow-up with implied timing but not urgent.",
+    "  – low: nice-to-have or loosely timed.",
+    "  – optional: discretionary or informational items that the owner may choose to do.",
+    "• Use the ISO timestamp from the triggering message verbatim for sourceTimestamp, and the speaker’s name for sourceSender.",
+    "",
+    `You also receive a list of allowed assignees: ${allowedNames.length ? allowedNames.join(", ") : "(none)"}. Prefer those names when they match the conversation.`,
+    "",
+    "Output format",
+    "Return a JSON array (no code fences). Each object must contain exactly:",
+    "",
+    "{",
+    '  "title": "Short imperative task summary",',
+    '  "description": "One or two sentences capturing context, commitments, and next steps with names",',
+    '  "assignee": "Responsible person name or null",',
+    '  "dueDate": "YYYY-MM-DD if a deadline exists, otherwise null",',
+    '  "priority": "critical|very-high|high|medium|low|optional",',
+    '  "sourceTimestamp": "ISO timestamp from the message",',
+    '  "sourceSender": "Name of the message author"',
+    "}",
+    "",
+    "If you find no qualifying action items, return [].",
   ].join("\n");
 
-  const body = {
-    contents: [
-      {
-        role: "user",
-        parts: [
-          { text: instructions },
-          { text: `Transcript:\n${transcript}` },
-        ],
+  const schema = {
+    type: "object",
+    properties: {
+      items: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            description: { type: "string" },
+            assignee: { type: ["string", "null"] },
+            dueDate: { type: ["string", "null"] },
+            priority: {
+              type: "string",
+              enum: ["critical", "very-high", "high", "medium", "low", "optional"],
+            },
+            sourceTimestamp: { type: "string" },
+            sourceSender: { type: "string" },
+          },
+          required: ["title", "description", "assignee", "dueDate", "priority", "sourceTimestamp", "sourceSender"],
+        },
       },
-    ],
-    generationConfig: {
-      temperature: 0.2,
-      topK: 32,
-      responseMimeType: "application/json",
     },
+    required: ["items"],
   };
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-    GEMINI_MODEL,
-  )}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
+  const contents = [
+    {
+      role: "user",
+      parts: [
+        { text: instructions },
+        { text: `Transcript:\n${transcript}` },
+      ],
     },
-    body: JSON.stringify(body),
-  });
+  ];
 
-  const payload = await response.json();
-  if (!response.ok) {
-    const message = payload?.error?.message || "Gemini API request failed.";
-    throw new Error(message);
+  const buildRequestBody = (targetModel) => {
+    const body = {
+      contents,
+      generationConfig: {
+        temperature: 0.2,
+        topK: 32,
+      },
+    };
+    if (isStructuredModel(targetModel)) {
+      body.tools = [
+        {
+          functionDeclarations: [
+            {
+              name: "store_action_items",
+              description: "Return the list of action items extracted from the WhatsApp transcript.",
+              parameters: schema,
+            },
+          ],
+        },
+      ];
+      body.toolConfig = { functionCall: { name: "store_action_items" } };
+    } else {
+      body.generationConfig.responseMimeType = "application/json";
+    }
+    return body;
+  };
+
+  const runRequest = async (targetEndpoint, targetModel) => {
+    const requestBody = buildRequestBody(targetModel);
+    const url = `https://generativelanguage.googleapis.com/${targetEndpoint}/models/${encodeURIComponent(targetModel)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(requestBody),
+    });
+    const payload = await response.json();
+    return { response, payload };
+  };
+
+  const isRetryableModelError = (response, payload) => {
+    if (!response || response.ok) return false;
+    if (response.status === 404) return true;
+    const message = (payload?.error?.message || "").toLowerCase();
+    return message.includes("not found") || message.includes("not supported");
+  };
+
+  const initialEndpoint = endpoint === "v1beta" ? "v1beta" : "v1";
+  const endpointCandidates = initialEndpoint === "v1" ? ["v1", "v1beta"] : ["v1beta", "v1"];
+
+  const modelCandidates = (() => {
+    const candidates = [];
+    const seen = new Set();
+    const addCandidate = (value) => {
+      const trimmed = (value || "").trim();
+      if (!trimmed || seen.has(trimmed)) return;
+      const cleaned = normaliseModel(trimmed);
+      if (!cleaned || seen.has(cleaned)) return;
+      seen.add(cleaned);
+      candidates.push(cleaned);
+    };
+    addCandidate(model);
+    if (/-latest$/i.test(model)) {
+      addCandidate(model.replace(/-latest$/i, ""));
+    }
+    if (/-\d+$/i.test(model)) {
+      addCandidate(model.replace(/-\d+$/i, ""));
+    }
+    if (/-\d+[a-z]+$/i.test(model)) {
+      addCandidate(model.replace(/-\d+[a-z]+$/i, ""));
+    }
+    if (/-preview$/i.test(model) || /-exp$/i.test(model)) {
+      addCandidate(model.replace(/-(preview|exp)$/i, ""));
+    }
+    return candidates;
+  })();
+
+  let lastError = null;
+
+  for (const modelCandidate of modelCandidates) {
+    for (const endpointCandidate of endpointCandidates) {
+      if (isStructuredModel(modelCandidate) && endpointCandidate !== "v1beta") {
+        continue;
+      }
+      const { response, payload } = await runRequest(endpointCandidate, modelCandidate);
+      const message = payload?.error?.message || "Gemini API request failed.";
+      if (response.ok) {
+        const candidate = payload?.candidates?.[0];
+        const parts = candidate?.content?.parts ?? [];
+        if (isStructuredModel(modelCandidate)) {
+          const functionPart = parts.find((part) => part?.functionCall);
+          if (!functionPart?.functionCall) {
+            console.error("Gemini response missing functionCall part", payload);
+            throw new Error("Gemini returned an unexpected response.");
+          }
+          const args = functionPart.functionCall.args ?? {};
+          let rawItems;
+          if (Array.isArray(args)) {
+            rawItems = args;
+          } else if (Array.isArray(args?.items)) {
+            rawItems = args.items;
+          } else if (typeof args?.items === "string") {
+            try {
+              rawItems = JSON.parse(args.items);
+            } catch (error) {
+              console.error("Failed to parse Gemini function payload", error, args.items);
+              throw new Error("Gemini returned an unexpected response.");
+            }
+          } else if (typeof args === "string") {
+            try {
+              const parsed = JSON.parse(args);
+              rawItems = parsed?.items ?? parsed;
+            } catch (error) {
+              console.error("Failed to parse Gemini function payload", error, args);
+              throw new Error("Gemini returned an unexpected response.");
+            }
+          } else if (args && typeof args === "object") {
+            rawItems = args.items ?? args;
+          }
+          return {
+            items: parseGeminiJson(rawItems),
+            endpointUsed: endpointCandidate,
+            modelUsed: modelCandidate,
+          };
+        }
+
+        const partText =
+          candidate?.content?.parts?.[0]?.text ??
+          candidate?.content?.[0]?.text ??
+          (candidate?.content?.parts ?? [])
+            .map((part) => part.text)
+            .filter(Boolean)
+            .join("\n");
+        if (!partText) {
+          return {
+            items: [],
+            endpointUsed: endpointCandidate,
+            modelUsed: modelCandidate,
+          };
+        }
+
+        try {
+          const parsed = JSON.parse(partText);
+          return {
+            items: parseGeminiJson(parsed),
+            endpointUsed: endpointCandidate,
+            modelUsed: modelCandidate,
+          };
+        } catch (error) {
+          console.error("Failed to parse Gemini response", error, partText);
+          throw new Error("Gemini returned an unexpected response.");
+        }
+      }
+
+      if (!isRetryableModelError(response, payload)) {
+        throw new Error(message);
+      }
+
+      lastError = message;
+    }
   }
 
-  const candidate = payload?.candidates?.[0];
-  const partText =
-    candidate?.content?.parts?.[0]?.text ??
-    candidate?.content?.[0]?.text ??
-    candidate?.content?.parts?.map((part) => part.text).filter(Boolean).join("\n");
-  if (!partText) return [];
-
-  try {
-    const parsed = JSON.parse(partText);
-    return parseGeminiJson(parsed);
-  } catch (error) {
-    console.error("Failed to parse Gemini response", error, partText);
-    throw new Error("Gemini returned an unexpected response.");
-  }
+  throw new Error(lastError || "Gemini API request failed.");
 };
 
-const summariseImportStats = ({ chatName, messageCount, taskCount }) => {
+const summariseImportStats = ({ chatName, messageCount, taskCount, model, endpoint }) => {
   const lines = [];
   lines.push(`${messageCount} new message${messageCount === 1 ? "" : "s"} analysed`);
   lines.push(`${taskCount} action item${taskCount === 1 ? "" : "s"} created`);
   lines.push(`Source chat: ${chatName}`);
+  if (model) {
+    const suffix = endpoint ? ` (${endpoint})` : "";
+    lines.push(`Model: ${model}${suffix}`);
+  }
   return lines;
 };
 
@@ -3081,20 +3613,30 @@ const logWhatsappActionsToSheet = async ({ chatName, tasks }) => {
 };
 
 const resetWhatsappImport = () => {
+  const model = state.importJob.model || GEMINI_MODEL;
+  const endpoint = state.importJob.endpoint || WHATSAPP_DEFAULT_ENDPOINT;
   state.importJob = {
     file: null,
     status: "idle",
     error: "",
     stats: null,
+    model,
+    endpoint,
   };
   if (elements.whatsappForm) {
     elements.whatsappForm.reset();
+  }
+  if (elements.whatsappModel) {
+    elements.whatsappModel.value = model;
+  }
+  if (elements.whatsappEndpoint) {
+    elements.whatsappEndpoint.value = endpoint;
   }
   renderWhatsappImport();
 };
 
 const renderWhatsappImport = () => {
-  const { file, status, error, stats } = state.importJob;
+  const { file, status, error, stats, model, endpoint } = state.importJob;
   if (elements.whatsappPreview) {
     if (stats && file) {
       elements.whatsappPreview.hidden = false;
@@ -3131,6 +3673,13 @@ const renderWhatsappImport = () => {
     }
   }
 
+  if (elements.whatsappModel) {
+    elements.whatsappModel.value = model;
+  }
+  if (elements.whatsappEndpoint) {
+    elements.whatsappEndpoint.value = endpoint;
+  }
+
   if (elements.whatsappFile) {
     elements.whatsappFile.disabled = status === "processing";
   }
@@ -3138,7 +3687,7 @@ const renderWhatsappImport = () => {
   if (submitButton) {
     submitButton.disabled = status === "processing" || !file;
     submitButton.textContent =
-      status === "processing" ? "Processing…" : status === "completed" ? "Run again" : "Fetch action items";
+      status === "processing" ? "Processing..." : status === "completed" ? "Run again" : "Fetch action items";
   }
 };
 
@@ -3166,6 +3715,7 @@ const closeWhatsappDialog = () => {
 const handleWhatsappFileChange = (event) => {
   const file = event.target.files?.[0] ?? null;
   state.importJob.file = file;
+  state.importJob.status = "idle";
   state.importJob.error = "";
   state.importJob.stats = file
     ? {
@@ -3183,6 +3733,9 @@ const processWhatsappImport = async () => {
   }
 
   const { company, project, section } = getWhatsappDestination();
+  const selectedModel = (state.importJob.model || GEMINI_MODEL).trim() || GEMINI_MODEL;
+  const selectedEndpointRaw = (state.importJob.endpoint || WHATSAPP_DEFAULT_ENDPOINT).toLowerCase();
+  const selectedEndpoint = selectedEndpointRaw === "v1beta" ? "v1beta" : "v1";
   const { chatName, messages } = await readWhatsappExport(file);
   if (!messages.length) {
     throw new Error("No messages were found in the chat export.");
@@ -3205,13 +3758,18 @@ const processWhatsappImport = async () => {
     .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
   if (!filtered.length) {
+    const summary = [
+      lastProcessedISO
+        ? `No new messages since ${new Date(lastProcessedISO).toLocaleString()}`
+        : "No recent messages found in the last 30 days"
+    ];
+    const endpointLabel = selectedEndpoint ? " (" + selectedEndpoint + ")" : "";
+    summary.push(`Model: ${selectedModel}${endpointLabel}`);
+    state.importJob.model = selectedModel;
+    state.importJob.endpoint = selectedEndpoint;
     state.importJob.stats = {
       range: formatDateRange(windowStart, new Date()),
-      summary: [
-        lastProcessedISO
-          ? `No new messages since ${new Date(lastProcessedISO).toLocaleString()}`
-          : "No recent messages found in the last 30 days",
-      ],
+      summary,
     };
     renderWhatsappImport();
     return;
@@ -3220,11 +3778,15 @@ const processWhatsappImport = async () => {
   const limited = filtered.slice(-Math.max(10, Math.min(filtered.length, MAX_WHATSAPP_LINES || 2000)));
   const transcript = buildTranscript(limited);
   const allowedAssignees = state.members.map((member) => ({ id: member.id, name: member.name }));
-  const actionItems = await callGeminiForActionItems({
+  const { items: actionItems, endpointUsed, modelUsed } = await callGeminiForActionItems({
     chatName,
     transcript,
     allowedAssignees,
+    model: selectedModel,
+    endpoint: selectedEndpoint,
   });
+  const effectiveEndpoint = endpointUsed || selectedEndpoint;
+  const effectiveModel = modelUsed || selectedModel;
 
   const memberLookup = new Map(
     allowedAssignees
@@ -3287,12 +3849,16 @@ const processWhatsappImport = async () => {
   state.imports.whatsapp[chatKey] = latestTimestamp.toISOString();
   saveImports();
 
+  state.importJob.model = effectiveModel;
+  state.importJob.endpoint = effectiveEndpoint;
   state.importJob.stats = {
     range: formatDateRange(earliestTimestamp, latestTimestamp),
     summary: summariseImportStats({
       chatName,
       messageCount: filtered.length,
       taskCount: createdTasks.length,
+      model: effectiveModel,
+      endpoint: effectiveEndpoint,
     }),
   };
   renderWhatsappImport();
@@ -3329,6 +3895,18 @@ const handleWhatsappSubmit = async (event) => {
   }
 };
 
+const handleWhatsappModelChange = (event) => {
+  const value = event.target?.value?.trim();
+  state.importJob.model = value || GEMINI_MODEL;
+  renderWhatsappImport();
+};
+
+const handleWhatsappEndpointChange = (event) => {
+  const value = (event.target?.value || "").toLowerCase();
+  state.importJob.endpoint = value === "v1beta" ? "v1beta" : "v1";
+  renderWhatsappImport();
+};
+
 const handleWhatsappDialogClick = (event) => {
   const action = event.target?.dataset?.action;
   if (action === "cancel-whatsapp") {
@@ -3338,9 +3916,6 @@ const handleWhatsappDialogClick = (event) => {
 };
 
 const handleGlobalClick = (event) => {
-  if (event.target.closest('[data-action="section-menu"]')) return;
-  if (event.target.closest('.section-menu')) return;
-  closeSectionMenu();
   if (!event.target.closest(".selector-dropdown")) {
     closeAllDropdowns();
   }
@@ -3348,7 +3923,6 @@ const handleGlobalClick = (event) => {
 
 const handleGlobalKeydown = (event) => {
   if (event.key === 'Escape') {
-    closeSectionMenu();
     closeAllDropdowns();
     closeUserguide();
     if (state.isQuickAddOpen) {
@@ -3578,9 +4152,9 @@ const hydrateState = async () => {
 const registerEventListeners = () => {
   elements.viewList?.addEventListener("click", handleViewClick);
   elements.boardColumns?.addEventListener("click", handleBoardClick);
-  elements.companyDropdownToggle?.addEventListener("click", () => toggleDropdown("company"));
   elements.projectDropdownToggle?.addEventListener("click", () => toggleDropdown("project"));
-  elements.companyDropdownMenu?.addEventListener("click", handleCompanyMenuClick);
+  elements.companyTabs?.addEventListener("click", handleCompanyTabsClick);
+  elements.taskTabList?.addEventListener("click", handleTaskTabListClick);
   elements.projectDropdownMenu?.addEventListener("click", handleProjectMenuClick);
   elements.userguideEditToggle?.addEventListener("click", handleUserguideEditToggle);
   elements.userguideCancelEdit?.addEventListener("click", handleUserguideCancelEdit);
@@ -3591,8 +4165,12 @@ const registerEventListeners = () => {
   document
     .querySelectorAll('[data-action="close-userguide"]')
     .forEach((button) => button.addEventListener("click", closeUserguide));
+  document.addEventListener("click", handleGlobalActionClick);
+  elements.activityFeed?.addEventListener("click", handleActivityClick);
   elements.importWhatsapp?.addEventListener("click", openWhatsappDialog);
   elements.whatsappForm?.addEventListener("submit", handleWhatsappSubmit);
+  elements.whatsappModel?.addEventListener("change", handleWhatsappModelChange);
+  elements.whatsappEndpoint?.addEventListener("change", handleWhatsappEndpointChange);
   elements.whatsappForm?.addEventListener("click", handleWhatsappDialogClick);
   elements.whatsappFile?.addEventListener("change", handleWhatsappFileChange);
   elements.whatsappDialog?.addEventListener("cancel", (event) => {
@@ -3600,11 +4178,8 @@ const registerEventListeners = () => {
     closeWhatsappDialog();
   });
 
-  [elements.taskList, elements.completedList].forEach((list) => {
-    if (!list) return;
-    list.addEventListener("change", handleTaskCheckboxChange);
-    list.addEventListener("click", handleTaskActionClick);
-  });
+  elements.taskTabPanels?.addEventListener("change", handleTaskCheckboxChange);
+  elements.taskTabPanels?.addEventListener("click", handleTaskActionClick);
 
   if (elements.quickAddForm) {
     elements.quickAddForm.addEventListener("submit", handleQuickAddSubmit);
@@ -3626,7 +4201,6 @@ const registerEventListeners = () => {
     savePreferences();
     updateDashboardMetrics();
   });
-  elements.toggleCompleted?.addEventListener("click", handleToggleCompleted);
   elements.addProject?.addEventListener("click", handleAddProject);
   elements.exportTasks?.addEventListener("click", handleExport);
   elements.addSection?.addEventListener("click", handleAddSection);
@@ -3686,4 +4260,3 @@ if (document.readyState === "loading") {
 } else {
   startApp();
 }
-const LEGACY_USERGUIDES = [LEGACY_USERGUIDE_V1, LEGACY_USERGUIDE_V2];
