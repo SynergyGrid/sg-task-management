@@ -106,7 +106,7 @@
             <button type="button" class="ghost-button small" data-action="close-userguide">Close</button>
           </div>
         </header>
-        <ol id="userguideList" class="userguide-list"></ol>
+        <div id="userguideList" class="userguide-list"></div>
         <form id="userguideForm" class="userguide-form" hidden>
           <label class="field-label" for="userguideEditor">Update the steps (one per line)</label>
           <textarea id="userguideEditor" rows="6" class="field-input" placeholder="Add step per line"></textarea>
@@ -226,18 +226,6 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v12m6-6H6"></path>
                   </svg>
                   Add Project
-                </button>
-                <button id="manageMembers" class="chip-button">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Zm-2 7H6a2 2 0 0 0-2 2v2h16v-2a2 2 0 0 0-2-2h-4Z"></path>
-                  </svg>
-                  Manage Members
-                </button>
-                <button id="manageDepartments" class="chip-button">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-2.8 0-5 1.57-5 3.5S9.2 15 12 15s5-1.57 5-3.5S14.8 8 12 8Zm0 0V5m0 3c3.33 0 6 1.79 6 4s-2.67 4-6 4c-3.33 0-6-1.79-6-4s2.67-4 6-4Z"></path>
-                  </svg>
-                  Manage Departments
                 </button>
                 <button id="importWhatsapp" class="chip-button">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -425,6 +413,150 @@
     </li>
   </template>
 
+  <!-- Meeting dialog -->
+  <dialog id="meetingDialog" class="modal">
+    <form id="meetingForm" method="dialog" class="modal-card max-w-2xl" novalidate>
+      <header class="modal-header">
+        <h2 class="text-lg font-semibold text-slate-900">Log meeting</h2>
+        <button type="button" class="ghost-button small" data-action="close-meeting">Close</button>
+      </header>
+      <div class="modal-body space-y-4">
+        <p class="text-sm text-slate-500" data-meeting-project></p>
+        <input type="hidden" name="projectId" />
+        <label class="form-field">
+          <span class="field-label">Title</span>
+          <input type="text" name="title" required class="field-input" placeholder="Sprint planning sync" />
+        </label>
+        <div class="form-row">
+          <label class="form-field">
+            <span class="field-label">Date</span>
+            <input type="date" name="date" class="field-input" />
+          </label>
+          <label class="form-field">
+            <span class="field-label">Priority</span>
+            <select name="priority" class="field-input">
+              <option value="critical">Critical</option>
+              <option value="very-high">Very high</option>
+              <option value="high">High</option>
+              <option value="medium" selected>Medium</option>
+              <option value="low">Low</option>
+              <option value="optional">Optional</option>
+            </select>
+          </label>
+        </div>
+        <div class="form-row">
+          <label class="form-field">
+            <span class="field-label">Department</span>
+            <select name="department" class="field-input"></select>
+          </label>
+          <label class="form-field">
+            <span class="field-label">Meeting type</span>
+            <select name="meetingType" class="field-input">
+              <option value="">Select type</option>
+              <option>Google Meet</option>
+              <option>Teams</option>
+              <option>Zoom</option>
+              <option>In Person</option>
+            </select>
+          </label>
+        </div>
+        <label class="form-field">
+          <span class="field-label">Attendees</span>
+          <textarea name="attendees" rows="2" class="field-input" placeholder="Alex, Jamie, product squad"></textarea>
+        </label>
+        <label class="checkbox-field">
+          <input type="checkbox" name="actionItems" />
+          <span>Action items captured</span>
+        </label>
+        <label class="form-field">
+          <span class="field-label">Notes</span>
+          <textarea name="notes" rows="3" class="field-input" placeholder="Agenda, context and decisions"></textarea>
+        </label>
+        <div class="field-group">
+          <div class="flex items-center justify-between">
+            <span class="field-label">Links</span>
+            <button type="button" class="ghost-button small" data-action="meeting-add-link">Add link</button>
+          </div>
+          <ul class="link-list" data-meeting-links></ul>
+        </div>
+        <p class="form-error" data-meeting-error></p>
+      </div>
+      <footer class="modal-footer">
+        <button type="button" class="ghost-button" data-action="close-meeting">Cancel</button>
+        <button type="submit" class="btn-primary">Save meeting</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- Email dialog -->
+  <dialog id="emailDialog" class="modal">
+    <form id="emailForm" method="dialog" class="modal-card max-w-2xl" novalidate>
+      <header class="modal-header">
+        <h2 class="text-lg font-semibold text-slate-900">Log email</h2>
+        <button type="button" class="ghost-button small" data-action="close-email">Close</button>
+      </header>
+      <div class="modal-body space-y-4">
+        <p class="text-sm text-slate-500" data-email-project></p>
+        <input type="hidden" name="projectId" />
+        <label class="form-field">
+          <span class="field-label">Title</span>
+          <input type="text" name="title" required class="field-input" placeholder="Client follow-up" />
+        </label>
+        <div class="form-row">
+          <label class="form-field">
+            <span class="field-label">Date</span>
+            <input type="date" name="date" class="field-input" />
+          </label>
+          <label class="form-field">
+            <span class="field-label">Priority</span>
+            <select name="priority" class="field-input">
+              <option value="critical">Critical</option>
+              <option value="very-high">Very high</option>
+              <option value="high">High</option>
+              <option value="medium" selected>Medium</option>
+              <option value="low">Low</option>
+              <option value="optional">Optional</option>
+            </select>
+          </label>
+        </div>
+        <div class="form-row">
+          <label class="form-field">
+            <span class="field-label">Department</span>
+            <select name="department" class="field-input"></select>
+          </label>
+          <label class="form-field">
+            <span class="field-label">Status</span>
+            <select name="status" class="field-input">
+              <option>Pending</option>
+              <option>Completed</option>
+              <option>In Progress</option>
+              <option>Updates</option>
+            </select>
+          </label>
+        </div>
+        <label class="form-field">
+          <span class="field-label">Email address</span>
+          <input type="email" name="emailAddress" class="field-input" placeholder="team@company.com" />
+        </label>
+        <label class="form-field">
+          <span class="field-label">Notes</span>
+          <textarea name="notes" rows="3" class="field-input" placeholder="Key decisions, follow-ups, attachments"></textarea>
+        </label>
+        <div class="field-group">
+          <div class="flex items-center justify-between">
+            <span class="field-label">Links</span>
+            <button type="button" class="ghost-button small" data-action="email-add-link">Add link</button>
+          </div>
+          <ul class="link-list" data-email-links></ul>
+        </div>
+        <p class="form-error" data-email-error></p>
+      </div>
+      <footer class="modal-footer">
+        <button type="button" class="ghost-button" data-action="close-email">Cancel</button>
+        <button type="submit" class="btn-primary">Save email</button>
+      </footer>
+    </form>
+  </dialog>
   <!-- Members dialog -->
   <dialog id="membersDialog" class="modal">
     <form id="membersForm" method="dialog" class="modal-card max-w-xl">
@@ -530,6 +662,10 @@
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>
+
+
+
+
 
 
 

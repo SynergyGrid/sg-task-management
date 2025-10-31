@@ -127,6 +127,59 @@
         </div>
       </form>
     </section>
+
+    <section class="bg-white border border-slate-200 rounded-2xl shadow-sm">
+      <div class="p-6 space-y-6">
+        <div class="space-y-3">
+          <h2 class="text-lg font-semibold text-slate-900">Team members</h2>
+          <p class="text-sm text-slate-500">Keep the roster current so assignments stay accurate.</p>
+        </div>
+        <div class="grid gap-6 lg:grid-cols-2">
+          <div class="space-y-4">
+            <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Current members</h3>
+            <ul id="settingsMemberList" class="space-y-2"></ul>
+          </div>
+          <form id="settingsMemberForm" class="space-y-4" novalidate>
+            <div class="grid gap-4 sm:grid-cols-2">
+              <label class="form-field">
+                <span class="field-label">Member name</span>
+                <input type="text" name="memberName" class="field-input" placeholder="Full name" required />
+              </label>
+              <label class="form-field">
+                <span class="field-label">Department</span>
+                <select name="memberDepartment" class="field-input"></select>
+              </label>
+            </div>
+            <p class="text-sm text-rose-500" data-member-error></p>
+            <div class="flex justify-end">
+              <button type="submit" class="btn-primary">Add member</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div class="border-t border-slate-100 p-6 space-y-6">
+        <div class="space-y-3">
+          <h2 class="text-lg font-semibold text-slate-900">Departments</h2>
+          <p class="text-sm text-slate-500">Group members into departments for reporting and filters.</p>
+        </div>
+        <div class="grid gap-6 lg:grid-cols-2">
+          <div class="space-y-4">
+            <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Current departments</h3>
+            <ul id="settingsDepartmentList" class="space-y-2"></ul>
+          </div>
+          <form id="settingsDepartmentForm" class="space-y-4" novalidate>
+            <label class="form-field">
+              <span class="field-label">Department name</span>
+              <input type="text" name="departmentName" class="field-input" placeholder="Department" required />
+            </label>
+            <p class="text-sm text-rose-500" data-department-error></p>
+            <div class="flex justify-end">
+              <button type="submit" class="btn-primary">Add department</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
   </main>
 
   <script type="module" src="/src/settings.main.js"></script>

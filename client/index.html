@@ -41,42 +41,44 @@
           </div>
           <ul id="viewList" class="flex flex-wrap items-center gap-2 ml-6 mt-4 md:mt-0 md:gap-2">
             <li>
-              <button class="view-pill active" data-view="inbox">
-                Inbox
-                <span class="count-pill" data-count="inbox">0</span>
+              <button class="view-pill active" data-view="workspace" aria-pressed="true">
+                Workspace
+                <span class="count-pill" data-count="workspace">0</span>
               </button>
             </li>
             <li>
-              <button class="view-pill" data-view="today">
-                Today
+              <button class="view-pill" data-view="today" aria-pressed="false">
+                Due Today
                 <span class="count-pill" data-count="today">0</span>
               </button>
             </li>
             <li>
-              <button class="view-pill" data-view="upcoming">
-                Upcoming
+              <button class="view-pill" data-view="upcoming" aria-pressed="false">
+                Upcoming 7 Days
                 <span class="count-pill" data-count="upcoming">0</span>
               </button>
             </li>
           </ul>
           <div class="hidden md:flex items-center space-x-4 ml-6">
-            <a href="index.html" class="text-sm font-medium text-slate-500 hover:text-slate-900 transition">Workspace</a>
-            <a href="settings.html" class="text-sm font-medium text-slate-500 hover:text-slate-900 transition">Settings</a>
             <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900 transition" data-action="open-userguide" aria-controls="userguidePanel">
               Userguide
             </button>
+            <a href="settings.html" class="text-sm font-medium text-slate-500 hover:text-slate-900 transition">Settings</a>
           </div>
         </div>
         <div class="flex items-center space-x-4">
-          <label class="relative hidden md:block">
-            <span class="sr-only">Search tasks</span>
-            <input id="searchInput" type="search" placeholder="Search tasks" class="peer search-input" />
-            <span class="search-icon">
-              <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m21 21-4.35-4.35M18 10.5a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z"></path>
-              </svg>
-            </span>
-          </label>
+          <div class="relative" data-search-root>
+            <label class="relative block">
+              <span class="sr-only">Search tasks</span>
+              <input id="searchInput" type="search" placeholder="Search tasks" class="peer search-input" />
+              <span class="search-icon">
+                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m21 21-4.35-4.35M18 10.5a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z"></path>
+                </svg>
+              </span>
+            </label>
+            <div id="searchResults" class="search-suggestions" hidden></div>
+          </div>
           <button id="exportTasks" class="nav-icon-btn" title="Export tasks">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m4 16 4 4 4-4m-4 4V4m7 4h4a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-4"></path>
@@ -178,10 +180,6 @@
           <div class="px-6 py-4 border-b border-slate-100 space-y-4">
             <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div class="flex flex-col gap-3 w-full">
-                <label class="block lg:hidden">
-                  <span class="sr-only">Search tasks</span>
-                  <input id="searchInput-mobile" type="search" placeholder="Search tasks" class="search-input w-full" />
-                </label>
                 <div class="flex flex-col gap-3">
                   <div class="selector-group">
                     <div class="flex flex-wrap items-center justify-between gap-2">
@@ -226,18 +224,6 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v12m6-6H6"></path>
                   </svg>
                   Add Project
-                </button>
-                <button id="manageMembers" class="chip-button">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Zm-2 7H6a2 2 0 0 0-2 2v2h16v-2a2 2 0 0 0-2-2h-4Z"></path>
-                  </svg>
-                  Manage Members
-                </button>
-                <button id="manageDepartments" class="chip-button">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-2.8 0-5 1.57-5 3.5S9.2 15 12 15s5-1.57 5-3.5S14.8 8 12 8Zm0 0V5m0 3c3.33 0 6 1.79 6 4s-2.67 4-6 4c-3.33 0-6-1.79-6-4s2.67-4 6-4Z"></path>
-                  </svg>
-                  Manage Departments
                 </button>
                 <button id="importWhatsapp" class="chip-button">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -425,51 +411,173 @@
     </li>
   </template>
 
-  <!-- Members dialog -->
-  <dialog id="membersDialog" class="modal">
-    <form id="membersForm" method="dialog" class="modal-card max-w-xl">
+  <!-- Company dialog -->
+  <dialog id="companyDialog" class="modal">
+    <form id="companyForm" method="dialog" class="modal-card max-w-md" novalidate>
       <header class="modal-header">
-        <h2 class="text-lg font-semibold text-slate-900">Manage members</h2>
-        <button type="button" class="ghost-button small" data-action="close">Close</button>
+        <h2 class="text-lg font-semibold text-slate-900">Edit company</h2>
+        <button type="button" class="ghost-button small" data-action="close-company">Close</button>
       </header>
-      <div class="modal-body manage-body">
-        <ul id="memberList" class="manage-list" aria-live="polite"></ul>
-        <div class="manage-form">
-          <label class="form-field">
-            <span class="field-label">Name</span>
-            <input type="text" name="memberName" placeholder="Full name" required class="field-input" />
-          </label>
-          <label class="form-field">
-            <span class="field-label">Department</span>
-            <select name="memberDepartment" class="field-input"></select>
-          </label>
-          <div class="form-actions">
-            <button class="btn-primary" type="submit" data-action="add-member">Add member</button>
-          </div>
-        </div>
+      <div class="modal-body space-y-4">
+        <label class="form-field">
+          <span class="field-label">Company name</span>
+          <input id="companyName" name="companyName" type="text" placeholder="Company name" required class="field-input" />
+        </label>
+        <p class="text-xs text-slate-500" data-company-subtitle hidden></p>
+        <p class="form-error" data-company-error></p>
       </div>
+      <footer class="modal-footer justify-between">
+        <button type="button" class="ghost-button danger" data-action="delete-company">Delete company</button>
+        <div class="flex gap-2">
+          <button type="button" class="ghost-button" data-action="close-company">Cancel</button>
+          <button type="submit" class="btn-primary">Save changes</button>
+        </div>
+      </footer>
     </form>
   </dialog>
 
-  <!-- Departments dialog -->
-  <dialog id="departmentsDialog" class="modal">
-    <form id="departmentsForm" method="dialog" class="modal-card max-w-lg">
+  <!-- Meeting dialog -->
+  <dialog id="meetingDialog" class="modal">
+    <form id="meetingForm" method="dialog" class="modal-card max-w-2xl" novalidate>
       <header class="modal-header">
-        <h2 class="text-lg font-semibold text-slate-900">Manage departments</h2>
-        <button type="button" class="ghost-button small" data-action="close">Close</button>
+        <h2 class="text-lg font-semibold text-slate-900">Log meeting</h2>
+        <button type="button" class="ghost-button small" data-action="close-meeting">Close</button>
       </header>
-      <div class="modal-body manage-body">
-        <ul id="departmentList" class="manage-list" aria-live="polite"></ul>
-        <div class="manage-form">
+      <div class="modal-body space-y-4">
+        <p class="text-sm text-slate-500" data-meeting-project></p>
+        <input type="hidden" name="projectId" />
+        <label class="form-field">
+          <span class="field-label">Title</span>
+          <input type="text" name="title" required class="field-input" placeholder="Sprint planning sync" />
+        </label>
+        <div class="form-row">
           <label class="form-field">
-            <span class="field-label">Name</span>
-            <input type="text" name="departmentName" placeholder="Department name" required class="field-input" />
+            <span class="field-label">Date</span>
+            <input type="date" name="date" class="field-input" />
           </label>
-          <div class="form-actions">
-            <button class="btn-primary" type="submit" data-action="add-department">Add department</button>
-          </div>
+          <label class="form-field">
+            <span class="field-label">Priority</span>
+            <select name="priority" class="field-input">
+              <option value="critical">Critical</option>
+              <option value="very-high">Very high</option>
+              <option value="high">High</option>
+              <option value="medium" selected>Medium</option>
+              <option value="low">Low</option>
+              <option value="optional">Optional</option>
+            </select>
+          </label>
         </div>
+        <div class="form-row">
+          <label class="form-field">
+            <span class="field-label">Department</span>
+            <select name="department" class="field-input"></select>
+          </label>
+          <label class="form-field">
+            <span class="field-label">Meeting type</span>
+            <select name="meetingType" class="field-input">
+              <option value="">Select type</option>
+              <option>Google Meet</option>
+              <option>Teams</option>
+              <option>Zoom</option>
+              <option>In Person</option>
+            </select>
+          </label>
+        </div>
+        <label class="form-field">
+          <span class="field-label">Attendees</span>
+          <textarea name="attendees" rows="2" class="field-input" placeholder="Alex, Jamie, product squad"></textarea>
+        </label>
+        <label class="checkbox-field">
+          <input type="checkbox" name="actionItems" />
+          <span>Action items captured</span>
+        </label>
+        <label class="form-field">
+          <span class="field-label">Notes</span>
+          <textarea name="notes" rows="3" class="field-input" placeholder="Agenda, context and decisions"></textarea>
+        </label>
+        <div class="field-group">
+          <div class="flex items-center justify-between">
+            <span class="field-label">Links</span>
+            <button type="button" class="ghost-button small" data-action="meeting-add-link">Add link</button>
+          </div>
+          <ul class="link-list" data-meeting-links></ul>
+        </div>
+        <p class="form-error" data-meeting-error></p>
       </div>
+      <footer class="modal-footer">
+        <button type="button" class="ghost-button" data-action="close-meeting">Cancel</button>
+        <button type="submit" class="btn-primary">Save meeting</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- Email dialog -->
+  <dialog id="emailDialog" class="modal">
+    <form id="emailForm" method="dialog" class="modal-card max-w-2xl" novalidate>
+      <header class="modal-header">
+        <h2 class="text-lg font-semibold text-slate-900">Log email</h2>
+        <button type="button" class="ghost-button small" data-action="close-email">Close</button>
+      </header>
+      <div class="modal-body space-y-4">
+        <p class="text-sm text-slate-500" data-email-project></p>
+        <input type="hidden" name="projectId" />
+        <label class="form-field">
+          <span class="field-label">Title</span>
+          <input type="text" name="title" required class="field-input" placeholder="Client follow-up" />
+        </label>
+        <div class="form-row">
+          <label class="form-field">
+            <span class="field-label">Date</span>
+            <input type="date" name="date" class="field-input" />
+          </label>
+          <label class="form-field">
+            <span class="field-label">Priority</span>
+            <select name="priority" class="field-input">
+              <option value="critical">Critical</option>
+              <option value="very-high">Very high</option>
+              <option value="high">High</option>
+              <option value="medium" selected>Medium</option>
+              <option value="low">Low</option>
+              <option value="optional">Optional</option>
+            </select>
+          </label>
+        </div>
+        <div class="form-row">
+          <label class="form-field">
+            <span class="field-label">Department</span>
+            <select name="department" class="field-input"></select>
+          </label>
+          <label class="form-field">
+            <span class="field-label">Status</span>
+            <select name="status" class="field-input">
+              <option value="Pending">Pending</option>
+              <option value="Completed">Completed</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Updates">Updates</option>
+            </select>
+          </label>
+        </div>
+        <label class="form-field">
+          <span class="field-label">Email address</span>
+          <input type="email" name="emailAddress" class="field-input" placeholder="team@company.com" />
+        </label>
+        <label class="form-field">
+          <span class="field-label">Notes</span>
+          <textarea name="notes" rows="3" class="field-input" placeholder="Summary, next steps, context"></textarea>
+        </label>
+        <div class="field-group">
+          <div class="flex items-center justify-between">
+            <span class="field-label">Links</span>
+            <button type="button" class="ghost-button small" data-action="email-add-link">Add link</button>
+          </div>
+          <ul class="link-list" data-email-links></ul>
+        </div>
+        <p class="form-error" data-email-error></p>
+      </div>
+      <footer class="modal-footer">
+        <button type="button" class="ghost-button" data-action="close-email">Cancel</button>
+        <button type="submit" class="btn-primary">Save email</button>
+      </footer>
     </form>
   </dialog>
 
