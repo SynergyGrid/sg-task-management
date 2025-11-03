@@ -1,6 +1,19 @@
+import { db } from './lib/firebaseClient';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+
 const STORAGE_KEYS = {
   settings: "synergygrid.todoist.settings.v1",
+  members: "synergygrid.todoist.members.v1",
+  departments: "synergygrid.todoist.departments.v1",
+  tasks: "synergygrid.todoist.tasks.v2",
+  projects: "synergygrid.todoist.projects.v2",
+  sections: "synergygrid.todoist.sections.v1",
+  companies: "synergygrid.todoist.companies.v1",
+  userguide: "synergygrid.todoist.userguide.v1",
 };
+
+const WORKSPACE_ID = import.meta.env.VITE_FIREBASE_WORKSPACE_ID ?? 'default';
+const workspaceRef = doc(db, 'workspaces', WORKSPACE_ID);
 
 const defaultSettings = () => ({
   profile: {
@@ -41,6 +54,18 @@ const normaliseSettings = (settings = {}) => {
   };
 };
 
+const DEFAULT_DEPARTMENT = {
+  id: "department-general",
+  name: "General",
+  isDefault: true,
+  createdAt: new Date().toISOString(),
+};
+
+const generateId = (prefix) => {
+  const fallback = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  return window.crypto?.randomUUID?.() ?? fallback;
+};
+
 const hexToRgba = (hex, alpha) => {
   if (!hex) return `rgba(37, 99, 235, ${alpha})`;
   const normalized = (hex || "").replace("#", "");
@@ -54,7 +79,7 @@ const hexToRgba = (hex, alpha) => {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
-const loadSettings = () => {
+const loadLocalSettings = () => {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEYS.settings);
     if (!raw) return defaultSettings();
@@ -64,8 +89,55 @@ const loadSettings = () => {
   }
 };
 
-const saveSettings = (settings) => {
-  window.localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(settings));
+const saveLocalSettings = (settings) => {
+  try {
+    window.localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(settings));
+  } catch {
+    // ignore localStorage errors
+  }
+};
+
+const saveSettingsRemote = async (settings) => {
+  try {
+    await setDoc(
+      workspaceRef,
+      {
+        settings,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true },
+    );
+  } catch (error) {
+    console.error('Failed to save settings to Firestore', error);
+  }
+};
+
+const readLocalJSON = (key, fallback) => {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const fetchRemoteSettings = async () => {
+  try {
+    const snapshot = await getDoc(workspaceRef);
+    if (snapshot.exists()) {
+      const remoteSettings = snapshot.data().settings;
+      if (remoteSettings) {
+        return normaliseSettings(remoteSettings);
+      }
+    } else {
+      await setDoc(workspaceRef, { settings: defaultSettings() }, { merge: true });
+    }
+  } catch (error) {
+    console.error('Failed to load settings from Firestore', error);
+  }
+  return null;
 };
 
 const elements = {
@@ -84,9 +156,20 @@ const elements = {
   priorityPreviewChips: document.querySelectorAll("[data-preview-chip]"),
   resetButton: document.getElementById("resetSettings"),
   saveStatus: document.getElementById("saveStatus"),
+  memberList: document.getElementById("settingsMemberList"),
+  memberForm: document.getElementById("settingsMemberForm"),
+  memberError: document.querySelector('[data-member-error]'),
+  memberDepartment: document.querySelector('#settingsMemberForm select[name="memberDepartment"]'),
+  departmentList: document.getElementById("settingsDepartmentList"),
+  departmentForm: document.getElementById("settingsDepartmentForm"),
+  departmentError: document.querySelector('[data-department-error]'),
+  exportWorkspace: document.getElementById("exportWorkspace"),
 };
 
-let draft = normaliseSettings(loadSettings());
+let teamMembers = [];
+let teamDepartments = [];
+
+let draft = normaliseSettings(loadLocalSettings());
 
 const applyThemePreview = (settings) => {
   const root = document.documentElement;
@@ -192,22 +275,500 @@ const showStatus = (message, tone = "success") => {
   }, 3500);
 };
 
-elements.form.addEventListener("submit", (event) => {
+elements.form.addEventListener("submit", async (event) => {
   event.preventDefault();
   draft = normaliseSettings(draft);
-  saveSettings(draft);
+  saveLocalSettings(draft);
+  await saveSettingsRemote(draft);
   updatePreview();
   showStatus("Settings saved. Refresh your workspace to apply.", "success");
 });
 
 elements.form.addEventListener("input", handleInputChange);
 
-elements.resetButton.addEventListener("click", () => {
+elements.resetButton.addEventListener("click", async () => {
   draft = normaliseSettings(defaultSettings());
   populateForm(draft);
   updatePreview();
+  saveLocalSettings(draft);
+  await saveSettingsRemote(draft);
   showStatus("Settings reset to defaults.", "success");
 });
 
+elements.exportWorkspace?.addEventListener("click", handleExportWorkspaceClick);
+
 populateForm(draft);
 updatePreview();
+
+fetchRemoteSettings().then((remote) => {
+  if (remote) {
+    draft = remote;
+    populateForm(draft);
+    updatePreview();
+    saveLocalSettings(draft);
+  }
+});
+
+const loadLocalArray = (key, fallback = []) => {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const saveLocalArray = (key, value) => {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // ignore localStorage issues
+  }
+};
+
+const syncTeamLocal = () => {
+  saveLocalArray(STORAGE_KEYS.members, teamMembers);
+  saveLocalArray(STORAGE_KEYS.departments, teamDepartments);
+};
+
+const ensureDefaultDepartmentPresent = () => {
+  if (!teamDepartments.some((department) => department.id === DEFAULT_DEPARTMENT.id)) {
+    teamDepartments = [{ ...DEFAULT_DEPARTMENT }, ...teamDepartments];
+  }
+};
+
+const getDepartmentName = (departmentId) =>
+  teamDepartments.find((department) => department.id === departmentId)?.name || "Unassigned";
+
+const populateMemberDepartmentOptions = (selectedId = "") => {
+  if (!elements.memberDepartment) return;
+  const fragment = document.createDocumentFragment();
+  const defaultOption = document.createElement("option");
+  defaultOption.value = "";
+  defaultOption.textContent = "No department";
+  fragment.append(defaultOption);
+  teamDepartments.forEach((department) => {
+    const option = document.createElement("option");
+    option.value = department.id;
+    option.textContent = department.name;
+    option.disabled = Boolean(department.isDefault && teamDepartments.length === 1);
+    fragment.append(option);
+  });
+  elements.memberDepartment.replaceChildren(fragment);
+  elements.memberDepartment.value = selectedId || "";
+};
+
+const createDepartmentSelect = (selectedId = "", dataset = {}) => {
+  const select = document.createElement("select");
+  select.className = "field-input inline-select";
+  Object.entries(dataset).forEach(([key, value]) => {
+    if (value === undefined) return;
+    select.dataset[key] = value;
+  });
+
+  const defaultOption = document.createElement("option");
+  defaultOption.value = "";
+  defaultOption.textContent = "No department";
+  select.append(defaultOption);
+
+  teamDepartments.forEach((department) => {
+    const option = document.createElement("option");
+    option.value = department.id;
+    option.textContent = department.name;
+    select.append(option);
+  });
+
+  select.value = selectedId || "";
+  return select;
+};
+
+const renderDepartmentList = () => {
+  if (!elements.departmentList) return;
+  if (!teamDepartments.length) {
+    const empty = document.createElement("li");
+    empty.textContent = "No departments yet.";
+    elements.departmentList.replaceChildren(empty);
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  teamDepartments.forEach((department) => {
+    const item = document.createElement("li");
+    item.className = "settings-inline-item";
+
+    const fields = document.createElement("div");
+    fields.className = "settings-inline-fields";
+
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.className = "field-input inline-input";
+    nameInput.value = department.name;
+    nameInput.dataset.departmentName = department.id;
+    fields.append(nameInput);
+
+    item.append(fields);
+
+    const actions = document.createElement("div");
+    actions.className = "settings-inline-actions";
+
+    const saveButton = document.createElement("button");
+    saveButton.type = "button";
+    saveButton.className = "btn-secondary btn-compact";
+    saveButton.dataset.action = "update-department";
+    saveButton.dataset.departmentId = department.id;
+    saveButton.textContent = "Save";
+    actions.append(saveButton);
+
+    if (!department.isDefault) {
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "ghost-button small";
+      removeButton.dataset.action = "remove-department";
+      removeButton.dataset.departmentId = department.id;
+      removeButton.textContent = "Remove";
+      actions.append(removeButton);
+    } else {
+      const badge = document.createElement("span");
+      badge.className = "default-badge";
+      badge.textContent = "Default";
+      actions.append(badge);
+    }
+
+    item.append(actions);
+    fragment.append(item);
+  });
+
+  elements.departmentList.replaceChildren(fragment);
+};
+
+const renderMemberList = () => {
+  if (!elements.memberList) return;
+  if (!teamMembers.length) {
+    const empty = document.createElement("li");
+    empty.textContent = "No members yet.";
+    elements.memberList.replaceChildren(empty);
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  teamMembers.forEach((member) => {
+    const item = document.createElement("li");
+    item.className = "settings-inline-item";
+
+    const fields = document.createElement("div");
+    fields.className = "settings-inline-fields";
+
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.className = "field-input inline-input";
+    nameInput.value = member.name;
+    nameInput.dataset.memberName = member.id;
+    fields.append(nameInput);
+
+    const departmentSelect = createDepartmentSelect(member.departmentId, {
+      memberDepartment: member.id,
+    });
+    fields.append(departmentSelect);
+
+    item.append(fields);
+
+    const actions = document.createElement("div");
+    actions.className = "settings-inline-actions";
+
+    const saveButton = document.createElement("button");
+    saveButton.type = "button";
+    saveButton.className = "btn-secondary btn-compact";
+    saveButton.dataset.action = "update-member";
+    saveButton.dataset.memberId = member.id;
+    saveButton.textContent = "Save";
+    actions.append(saveButton);
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "ghost-button small";
+    removeButton.dataset.action = "remove-member";
+    removeButton.dataset.memberId = member.id;
+    removeButton.textContent = "Remove";
+    actions.append(removeButton);
+
+    item.append(actions);
+    fragment.append(item);
+  });
+
+  elements.memberList.replaceChildren(fragment);
+};
+
+const syncTeamRemote = async () => {
+  try {
+    await setDoc(
+      workspaceRef,
+      {
+        members: teamMembers,
+        departments: teamDepartments,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true },
+    );
+  } catch (error) {
+    console.error('Failed to sync team data to Firestore', error);
+  }
+};
+
+const addDepartment = (name) => {
+  const trimmed = name.trim();
+  if (!trimmed) return { error: "Department name is required." };
+  const exists = teamDepartments.some((department) => department.name.toLowerCase() === trimmed.toLowerCase());
+  if (exists) return { error: "That department already exists." };
+  const department = {
+    id: generateId("department"),
+    name: trimmed,
+    isDefault: false,
+    createdAt: new Date().toISOString(),
+  };
+  teamDepartments.push(department);
+  ensureDefaultDepartmentPresent();
+  syncTeamLocal();
+  populateMemberDepartmentOptions(elements.memberDepartment?.value || "");
+  renderDepartmentList();
+  renderMemberList();
+  syncTeamRemote();
+  return { department };
+};
+
+const updateDepartment = (departmentId, nextName) => {
+  const department = teamDepartments.find((entry) => entry.id === departmentId);
+  if (!department) return { error: "Department not found." };
+  const trimmed = nextName.trim();
+  if (!trimmed) return { error: "Department name is required." };
+  const exists = teamDepartments.some(
+    (entry) => entry.id !== departmentId && entry.name.toLowerCase() === trimmed.toLowerCase(),
+  );
+  if (exists) return { error: "That department already exists." };
+
+  department.name = trimmed;
+  department.updatedAt = new Date().toISOString();
+  syncTeamLocal();
+  renderDepartmentList();
+  populateMemberDepartmentOptions(elements.memberDepartment?.value || "");
+  renderMemberList();
+  syncTeamRemote();
+  return { success: true };
+};
+
+const removeDepartment = (departmentId) => {
+  const department = teamDepartments.find((entry) => entry.id === departmentId);
+  if (!department) return { error: "Department not found." };
+  if (department.isDefault) return { error: "The default department cannot be removed." };
+  teamDepartments = teamDepartments.filter((entry) => entry.id !== departmentId);
+  teamMembers = teamMembers.map((member) =>
+    member.departmentId === departmentId ? { ...member, departmentId: "" } : member,
+  );
+  ensureDefaultDepartmentPresent();
+  syncTeamLocal();
+  populateMemberDepartmentOptions(elements.memberDepartment?.value || "");
+  renderDepartmentList();
+  renderMemberList();
+  syncTeamRemote();
+  return { success: true };
+};
+
+const addMember = (name, departmentId) => {
+  const trimmed = name.trim();
+  if (!trimmed) return { error: "Member name is required." };
+  const member = {
+    id: generateId("member"),
+    name: trimmed,
+    departmentId: departmentId || "",
+    createdAt: new Date().toISOString(),
+  };
+  teamMembers.push(member);
+  syncTeamLocal();
+  renderMemberList();
+  syncTeamRemote();
+  return { member };
+};
+
+const updateMember = (memberId, updates) => {
+  const memberIndex = teamMembers.findIndex((member) => member.id === memberId);
+  if (memberIndex === -1) return { error: "Member not found." };
+  const nextName = (updates?.name ?? teamMembers[memberIndex].name).trim();
+  if (!nextName) return { error: "Member name is required." };
+  const nextDepartment = updates?.departmentId ?? teamMembers[memberIndex].departmentId ?? "";
+
+  teamMembers[memberIndex] = {
+    ...teamMembers[memberIndex],
+    name: nextName,
+    departmentId: nextDepartment,
+    updatedAt: new Date().toISOString(),
+  };
+
+  syncTeamLocal();
+  renderMemberList();
+  populateMemberDepartmentOptions(elements.memberDepartment?.value || "");
+  syncTeamRemote();
+  return { success: true };
+};
+
+const removeMember = (memberId) => {
+  teamMembers = teamMembers.filter((member) => member.id !== memberId);
+  syncTeamLocal();
+  renderMemberList();
+  syncTeamRemote();
+};
+
+const loadTeamData = async () => {
+  teamMembers = loadLocalArray(STORAGE_KEYS.members, []);
+  teamDepartments = loadLocalArray(STORAGE_KEYS.departments, []);
+  ensureDefaultDepartmentPresent();
+  try {
+    const snapshot = await getDoc(workspaceRef);
+    if (snapshot.exists()) {
+      const data = snapshot.data();
+      if (Array.isArray(data.members)) {
+        teamMembers = data.members;
+      }
+      if (Array.isArray(data.departments)) {
+        teamDepartments = data.departments;
+      }
+      ensureDefaultDepartmentPresent();
+      syncTeamLocal();
+    }
+  } catch (error) {
+    console.error('Failed to load team data from Firestore', error);
+  }
+  ensureDefaultDepartmentPresent();
+  populateMemberDepartmentOptions();
+  renderDepartmentList();
+  renderMemberList();
+};
+
+const handleMemberFormSubmit = (event) => {
+  event.preventDefault();
+  if (!elements.memberForm) return;
+  const name = elements.memberForm.memberName.value;
+  const departmentId = elements.memberDepartment?.value || "";
+  const { error } = addMember(name, departmentId) || {};
+  if (error) {
+    if (elements.memberError) elements.memberError.textContent = error;
+    return;
+  }
+  if (elements.memberError) elements.memberError.textContent = "";
+  elements.memberForm.reset();
+  populateMemberDepartmentOptions();
+};
+
+const handleMemberListClick = (event) => {
+  const button = event.target.closest('[data-action]');
+  if (!button) return;
+  const action = button.dataset.action;
+  if (action === "remove-member") {
+    removeMember(button.dataset.memberId);
+    if (elements.memberError) elements.memberError.textContent = "";
+    return;
+  }
+  if (action === "update-member") {
+    const item = button.closest("li");
+    if (!item) return;
+    const memberId = button.dataset.memberId;
+    const nameInput = item.querySelector('input[data-member-name]');
+    const departmentSelect = item.querySelector('select[data-member-department]');
+    const { error } =
+      updateMember(memberId, {
+        name: nameInput?.value ?? "",
+        departmentId: departmentSelect?.value ?? "",
+      }) || {};
+    if (elements.memberError) {
+      elements.memberError.textContent = error ? error : "";
+    }
+  }
+};
+
+const handleDepartmentFormSubmit = (event) => {
+  event.preventDefault();
+  if (!elements.departmentForm) return;
+  const name = elements.departmentForm.departmentName.value;
+  const { error } = addDepartment(name) || {};
+  if (error) {
+    if (elements.departmentError) elements.departmentError.textContent = error;
+    return;
+  }
+  if (elements.departmentError) elements.departmentError.textContent = "";
+  elements.departmentForm.reset();
+};
+
+const handleDepartmentListClick = (event) => {
+  const button = event.target.closest('[data-action]');
+  if (!button) return;
+  const action = button.dataset.action;
+  if (action === "remove-department") {
+    const { error } = removeDepartment(button.dataset.departmentId) || {};
+    if (elements.departmentError) elements.departmentError.textContent = error ? error : "";
+    return;
+  }
+  if (action === "update-department") {
+    const item = button.closest("li");
+    if (!item) return;
+    const input = item.querySelector('input[data-department-name]');
+    const { error } = updateDepartment(button.dataset.departmentId, input?.value ?? "") || {};
+    if (elements.departmentError) elements.departmentError.textContent = error ? error : "";
+  }
+};
+
+const handleExportWorkspaceClick = async () => {
+  if (!elements.exportWorkspace || elements.exportWorkspace.disabled) return;
+  elements.exportWorkspace.disabled = true;
+  elements.exportWorkspace.setAttribute("aria-busy", "true");
+
+  let remoteData = null;
+  try {
+    const snapshot = await getDoc(workspaceRef);
+    if (snapshot.exists()) {
+      remoteData = snapshot.data();
+    }
+  } catch (error) {
+    console.error("Failed to refresh workspace snapshot before export", error);
+  }
+
+  const pickArray = (value, fallback = []) => (Array.isArray(value) ? value : fallback);
+
+  const payload = {
+    tasks: pickArray(remoteData?.tasks, readLocalJSON(STORAGE_KEYS.tasks, [])),
+    projects: pickArray(remoteData?.projects, readLocalJSON(STORAGE_KEYS.projects, [])),
+    sections: pickArray(remoteData?.sections, readLocalJSON(STORAGE_KEYS.sections, [])),
+    companies: pickArray(remoteData?.companies, readLocalJSON(STORAGE_KEYS.companies, [])),
+    members: pickArray(remoteData?.members, teamMembers),
+    departments: pickArray(remoteData?.departments, teamDepartments),
+    userguide: pickArray(remoteData?.userguide, readLocalJSON(STORAGE_KEYS.userguide, [])),
+    exportedAt: new Date().toISOString(),
+  };
+
+  try {
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "synergy-tasks-backup.json";
+    anchor.rel = "noopener";
+    anchor.click();
+    URL.revokeObjectURL(url);
+    showStatus("Workspace export downloaded.", "success");
+  } catch (error) {
+    console.error("Failed to export workspace snapshot", error);
+    showStatus("Unable to export workspace right now.", "error");
+  } finally {
+    elements.exportWorkspace.disabled = false;
+    elements.exportWorkspace.removeAttribute("aria-busy");
+  }
+};
+
+const initTeamManagement = async () => {
+  await loadTeamData();
+  elements.memberForm?.addEventListener("submit", handleMemberFormSubmit);
+  elements.memberList?.addEventListener("click", handleMemberListClick);
+  elements.departmentForm?.addEventListener("submit", handleDepartmentFormSubmit);
+  elements.departmentList?.addEventListener("click", handleDepartmentListClick);
+};
+
+initTeamManagement();

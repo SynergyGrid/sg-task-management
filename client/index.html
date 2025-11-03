@@ -467,8 +467,14 @@
   <dialog id="meetingDialog" class="modal">
     <form id="meetingForm" method="dialog" class="modal-card max-w-2xl" novalidate>
       <header class="modal-header">
-        <h2 class="text-lg font-semibold text-slate-900">Log meeting</h2>
-        <button type="button" class="ghost-button small" data-action="close-meeting">Close</button>
+        <div>
+          <h2 class="text-lg font-semibold text-slate-900">Log meeting</h2>
+          <p class="modal-subtitle text-xs text-slate-500" data-meeting-status></p>
+        </div>
+        <div class="modal-header__actions">
+          <button type="button" class="ghost-button small" data-action="meeting-toggle-completion" hidden>Mark completed</button>
+          <button type="button" class="ghost-button small" data-action="close-meeting">Close</button>
+        </div>
       </header>
       <div class="modal-body space-y-4">
         <p class="text-sm text-slate-500" data-meeting-project></p>
@@ -552,8 +558,14 @@
   <dialog id="emailDialog" class="modal">
     <form id="emailForm" method="dialog" class="modal-card max-w-2xl" novalidate>
       <header class="modal-header">
-        <h2 class="text-lg font-semibold text-slate-900">Log email</h2>
-        <button type="button" class="ghost-button small" data-action="close-email">Close</button>
+        <div>
+          <h2 class="text-lg font-semibold text-slate-900">Log email</h2>
+          <p class="modal-subtitle text-xs text-slate-500" data-email-status></p>
+        </div>
+        <div class="modal-header__actions">
+          <button type="button" class="ghost-button small" data-action="email-toggle-completion" hidden>Mark completed</button>
+          <button type="button" class="ghost-button small" data-action="close-email">Close</button>
+        </div>
       </header>
       <div class="modal-body space-y-4">
         <p class="text-sm text-slate-500" data-email-project></p>

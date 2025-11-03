@@ -83,6 +83,8 @@ const PRIORITY_LABELS = {
   low: "Low priority",
   optional: "Optional priority",
 };
+const MIN_TEXTAREA_HEIGHT = 72;
+const MAX_TEXTAREA_HEIGHT = 720;
 const AUTOSIZE_RESET_KEYS = new Set([
   "quick-add-description",
   "dialog-description",
@@ -104,14 +106,17 @@ const DEFAULT_USERGUIDE = [
   "- Click Add Task for a quick capture or open any task row to edit the full detail dialog.",
   "- Description fields start at three lines and expand automatically as you type.",
   "- Task cards surface the first three lines of notes plus assignee, action items, and due dates at a glance.",
-  "- Use the Mark completed / Restore control inside the task dialog to switch status.",
+  "- Use the Mark completed / Restore control inside the task dialog to switch status.",
+  "- Closing the task window, clicking outside, or pressing Save all capture your changes automatically.",
   "### Meetings",
   "- Use the Meeting quick action to log attendees, meeting type, links, notes and follow-up items.",
   "- Action items appear as an interactive checklist. Paste multiple lines to create a list automatically and tick entries off as work lands.",
-  "- Meetings surface under the project overview so you can monitor follow-ups without leaving the overview tab.",
+  "- Meetings surface under the project overview so you can monitor follow-ups without leaving the overview tab.",
+  "- Mark meetings complete from the dialog header and any changes are auto-saved when you close.",
   "### Emails",
   "- The Email quick action tracks important threads with status, notes and supporting links.",
-  "- Notes resize with the content and remember the height you prefer for long summaries.",
+  "- Notes resize with the content and remember the height you prefer for long summaries.",
+  "- Mark emails complete straight from the header; closing the window auto-saves edits too.",
   "## Finding context",
   "- The global search provides live suggestions; selecting a result jumps to the correct company/project and opens the task dialog.",
   "- All Activity now includes Created, Updated, Completed and Deleted tabs for a richer audit trail.",
@@ -120,7 +125,7 @@ const DEFAULT_USERGUIDE = [
   "- Manage members and departments from Settings so assignments and filters stay accurate across the workspace.",
   "- Use the Workspace export button in Settings to download tasks, projects, sections, companies, members, departments and the userguide as JSON.",
   "- Deleting a project or company preserves its tasks by moving them into Workspace under the default company.",
-  "- Members and departments can be edited inline from Settings—adjust names or move people between departments without leaving the page.",
+  "- Members and departments can be edited inline from Settings - adjust names or move people between departments without leaving the page.",
   "## Recent improvements",
   "- Project settings open in a dedicated dialog so you can rename, reassign, or delete with confirmation.",
   "- Meeting and Email quick actions sit on their own row in the project picker for easier tapping.",
@@ -130,14 +135,17 @@ const DEFAULT_USERGUIDE = [
   "- Keep entries concise but complete so teammates can follow the latest workflow without additional training.",
 ];
 
-const USERGUIDE_LATEST_ENTRIES = [
-  "- Task cards surface the first three lines of notes plus assignee, action items, and due dates at a glance.",
-  "- Use the Mark completed / Restore control inside the task dialog to switch status.",
-  "- Members and departments can be edited inline from Settings—adjust names or move people between departments without leaving the page.",
-  "## Recent improvements",
-  "- Project settings open in a dedicated dialog so you can rename, reassign, or delete with confirmation.",
-  "- Meeting and Email quick actions sit on their own row in the project picker for easier tapping.",
-  "- Completed tasks highlight a Restore button in the editor, and search jumps now spotlight the matching card.",
+const USERGUIDE_LATEST_ENTRIES = [
+  "- Task cards surface the first three lines of notes plus assignee, action items, and due dates at a glance.",
+  "- Use the Mark completed / Restore control inside the task dialog to switch status.",
+  "- Closing any task, meeting, or email dialog now auto-saves your edits.",
+  "- Meeting and Email editors include Mark completed toggles so you can finish work without leaving the dialog.",
+  "- Settings shows members and departments as editable inline lists for quick updates.",
+  "- Every task type can be dragged between sections on the board view.",
+  "## Recent improvements",
+  "- Project settings open in a dedicated dialog so you can rename, reassign, or delete with confirmation.",
+  "- Meeting and Email quick actions sit on their own row in the project picker for easier tapping.",
+  "- Completed tasks highlight a Restore button in the editor, and search jumps now spotlight the matching card.",
 ];
 
 const LEGACY_USERGUIDE_V1 = [
@@ -181,6 +189,8 @@ const state = {
   editingMeetingId: null,
   editingEmailId: null,
   meetingActionDraft: [],
+  meetingCompletedDraft: false,
+  emailCompletedDraft: false,
   textareaHeights: {},
   dragTaskId: null,
   dragSectionId: null,
@@ -269,6 +279,8 @@ const elements = {
   meetingDialog: document.getElementById("meetingDialog"),
   meetingForm: document.getElementById("meetingForm"),
   meetingProjectLabel: document.querySelector("[data-meeting-project]"),
+  meetingDialogStatus: document.querySelector("[data-meeting-status]"),
+  meetingDialogToggle: document.querySelector('[data-action="meeting-toggle-completion"]'),
   meetingDepartment: document.querySelector('#meetingForm select[name="department"]'),
   meetingPriority: document.querySelector('#meetingForm select[name="priority"]'),
   meetingLinksList: document.querySelector("[data-meeting-links]"),
@@ -278,6 +290,8 @@ const elements = {
   emailDialog: document.getElementById("emailDialog"),
   emailForm: document.getElementById("emailForm"),
   emailProjectLabel: document.querySelector("[data-email-project]"),
+  emailDialogStatus: document.querySelector("[data-email-status]"),
+  emailDialogToggle: document.querySelector('[data-action="email-toggle-completion"]'),
   emailDepartment: document.querySelector('#emailForm select[name="department"]'),
   emailPriority: document.querySelector('#emailForm select[name="priority"]'),
   emailStatus: document.querySelector('#emailForm select[name="status"]'),
@@ -1021,6 +1035,32 @@ const updateTaskDialogCompletionState = (task) => {
   }
   if (elements.dialogForm?.elements?.completed) {
     elements.dialogForm.elements.completed.checked = completed;
+  }
+};
+
+const updateMeetingDialogCompletionState = (completed, completedAt = null) => {
+  if (elements.meetingDialogToggle) {
+    elements.meetingDialogToggle.dataset.completedState = completed ? "true" : "false";
+    elements.meetingDialogToggle.textContent = completed ? "Restore meeting" : "Mark completed";
+  }
+  if (elements.meetingDialogStatus) {
+    elements.meetingDialogStatus.textContent = describeTaskCompletionStatus({
+      completed,
+      completedAt,
+    });
+  }
+};
+
+const updateEmailDialogCompletionState = (completed, completedAt = null) => {
+  if (elements.emailDialogToggle) {
+    elements.emailDialogToggle.dataset.completedState = completed ? "true" : "false";
+    elements.emailDialogToggle.textContent = completed ? "Restore email" : "Mark completed";
+  }
+  if (elements.emailDialogStatus) {
+    elements.emailDialogStatus.textContent = describeTaskCompletionStatus({
+      completed,
+      completedAt,
+    });
   }
 };
 
@@ -2035,7 +2075,7 @@ const createBoardCard = (task) => {
 
   card.addEventListener("dragstart", handleBoardDragStart);
   card.addEventListener("dragend", handleBoardDragEnd);
-  card.addEventListener("dblclick", () => openTaskDialog(task.id));
+  card.addEventListener("dblclick", () => openTaskEditor(task));
 
   return card;
 };
@@ -2512,7 +2552,8 @@ const autoResizeTextarea = (textarea) => {
   textarea.style.height = `${textarea.scrollHeight}px`;
 };
 
-const clampTextareaHeight = (value) => Math.min(Math.max(value, 120), 720);
+const clampTextareaHeight = (value) =>
+  Math.min(Math.max(value, MIN_TEXTAREA_HEIGHT), MAX_TEXTAREA_HEIGHT);
 
 const saveTextareaHeight = (key, height) => {
   if (!key || AUTOSIZE_RESET_KEYS.has(key)) return;
@@ -2805,6 +2846,7 @@ const addTask = (payload) => {
         : {},
     links: normaliseTaskLinks(payload.links),
     completed: Boolean(payload.completed ?? false),
+    completedAt: payload.completed ? payload.completedAt ?? now : null,
     createdAt,
     updatedAt: now,
     deletedAt: null,
@@ -3587,15 +3629,27 @@ const prepareMeetingDialog = (projectId, task = null) => {
   if (form.elements.notes) {
     form.elements.notes.value = task?.description ?? "";
   }
-  const actionItems = Array.isArray(task?.metadata?.actionItems)
-    ? task.metadata.actionItems
-    : [];
+
+  const actionItems = Array.isArray(task?.metadata?.actionItems) ? task.metadata.actionItems : [];
   setMeetingActionDraft(actionItems);
   renderMeetingActionItems();
   if (elements.meetingActionInput) {
     elements.meetingActionInput.value = "";
   }
   resetLinkList(elements.meetingLinksList, Array.isArray(task?.links) ? task.links : []);
+
+  state.meetingCompletedDraft = Boolean(task?.completed);
+  const completedAt = task?.completedAt ?? null;
+  const isEditing = Boolean(task);
+  if (elements.meetingDialogToggle) {
+    elements.meetingDialogToggle.hidden = !isEditing;
+    elements.meetingDialogToggle.disabled = !isEditing;
+  }
+  updateMeetingDialogCompletionState(state.meetingCompletedDraft, completedAt);
+  if (!isEditing && elements.meetingDialogStatus) {
+    elements.meetingDialogStatus.textContent = "";
+  }
+
   if (elements.meetingError) elements.meetingError.textContent = "";
   registerAutosizeTextarea(form.elements.attendees);
   registerAutosizeTextarea(form.elements.notes);
@@ -3619,6 +3673,7 @@ const closeMeetingDialog = () => {
   const dialog = elements.meetingDialog;
   const form = elements.meetingForm;
   state.editingMeetingId = null;
+  state.meetingCompletedDraft = false;
   if (form) {
     form.reset();
     resetLinkList(elements.meetingLinksList);
@@ -3631,16 +3686,30 @@ const closeMeetingDialog = () => {
   if (elements.meetingActionInput) {
     elements.meetingActionInput.value = "";
   }
+  if (elements.meetingDialogToggle) {
+    elements.meetingDialogToggle.hidden = true;
+    elements.meetingDialogToggle.disabled = true;
+    elements.meetingDialogToggle.dataset.completedState = "false";
+    elements.meetingDialogToggle.textContent = "Mark completed";
+  }
+  if (elements.meetingDialogStatus) {
+    elements.meetingDialogStatus.textContent = "";
+  }
   if (dialog) {
     if (typeof dialog.close === "function") dialog.close();
     else dialog.removeAttribute("open");
   }
 };
 
-const handleMeetingFormSubmit = (event) => {
-  event.preventDefault();
+const commitMeetingForm = ({ allowCreate = false } = {}) => {
   const form = elements.meetingForm;
-  if (!form) return;
+  if (!form) return false;
+  const isEditing = Boolean(state.editingMeetingId);
+  if (!isEditing && !allowCreate) {
+    if (elements.meetingError) elements.meetingError.textContent = "";
+    return true;
+  }
+
   const titleField = form.elements.title;
   const title = titleField?.value?.trim() ?? "";
   if (!title) {
@@ -3648,7 +3717,7 @@ const handleMeetingFormSubmit = (event) => {
       elements.meetingError.textContent = "Title is required.";
     }
     titleField?.focus();
-    return;
+    return false;
   }
 
   const projectId = form.elements.projectId.value || "inbox";
@@ -3656,7 +3725,8 @@ const handleMeetingFormSubmit = (event) => {
   const sectionId = getDefaultSectionId(projectId);
   const links = collectLinks(elements.meetingLinksList);
   const existing = state.tasks.find((task) => task.id === state.editingMeetingId);
-  const metadata = existing?.metadata && typeof existing.metadata === "object" ? { ...existing.metadata } : {};
+  const metadata =
+    existing?.metadata && typeof existing.metadata === "object" ? { ...existing.metadata } : {};
   metadata.meetingType = form.elements.meetingType.value;
   metadata.attendees = form.elements.attendees.value.trim();
   const actionItems = commitMeetingActionDraft();
@@ -3676,19 +3746,55 @@ const handleMeetingFormSubmit = (event) => {
     metadata,
     links,
     actionItems,
+    completed: state.meetingCompletedDraft,
   };
 
-  if (state.editingMeetingId && existing) {
-    updateTask(state.editingMeetingId, payload);
-  } else {
+  if (isEditing && existing) {
+    const updated = updateTask(state.editingMeetingId, payload);
+    if (!updated) return false;
+    state.meetingCompletedDraft = updated.completed;
+    updateMeetingDialogCompletionState(updated.completed, updated.completedAt ?? null);
+  } else if (allowCreate) {
     addTask(payload);
   }
 
-  closeMeetingDialog();
+  if (elements.meetingError) elements.meetingError.textContent = "";
+  return true;
+};
+
+const autoSaveMeetingDialog = () => {
+  const saved = commitMeetingForm({ allowCreate: false });
+  if (saved) {
+    closeMeetingDialog();
+  }
+  return saved;
+};
+
+const handleMeetingFormSubmit = (event) => {
+  event.preventDefault();
+  commitMeetingForm({ allowCreate: true }) && closeMeetingDialog();
 };
 
 const handleMeetingFormClick = (event) => {
   const action = event.target.dataset.action;
+  if (action === "meeting-toggle-completion") {
+    event.preventDefault();
+    const nextCompleted = !state.meetingCompletedDraft;
+    state.meetingCompletedDraft = nextCompleted;
+    if (state.editingMeetingId) {
+      const updated = updateTask(state.editingMeetingId, { completed: nextCompleted });
+      if (updated) {
+        state.meetingCompletedDraft = updated.completed;
+        updateMeetingDialogCompletionState(updated.completed, updated.completedAt ?? null);
+      }
+    } else {
+      updateMeetingDialogCompletionState(
+        nextCompleted,
+        nextCompleted ? new Date().toISOString() : null,
+      );
+    }
+    return;
+  }
   if (action === "meeting-add-link") {
     event.preventDefault();
     createLinkRow(elements.meetingLinksList);
@@ -3713,7 +3819,7 @@ const handleMeetingFormClick = (event) => {
       value
         .split(/\r?\n/)
         .map((line) => line.trim())
-        .filter(Boolean)
+        .filter(Boolean),
     );
     input.value = "";
     input.focus();
@@ -3727,7 +3833,7 @@ const handleMeetingFormClick = (event) => {
   }
   if (action === "close-meeting") {
     event.preventDefault();
-    closeMeetingDialog();
+    autoSaveMeetingDialog();
   }
 };
 
@@ -3756,6 +3862,17 @@ const prepareEmailDialog = (projectId, task = null) => {
     form.elements.notes.value = task?.description ?? "";
   }
   resetLinkList(elements.emailLinksList, Array.isArray(task?.links) ? task.links : []);
+  state.emailCompletedDraft = Boolean(task?.completed);
+  const completedAt = task?.completedAt ?? null;
+  const isEditing = Boolean(task);
+  if (elements.emailDialogToggle) {
+    elements.emailDialogToggle.hidden = !isEditing;
+    elements.emailDialogToggle.disabled = !isEditing;
+  }
+  updateEmailDialogCompletionState(state.emailCompletedDraft, completedAt);
+  if (!isEditing && elements.emailDialogStatus) {
+    elements.emailDialogStatus.textContent = "";
+  }
   if (elements.emailError) elements.emailError.textContent = "";
   registerAutosizeTextarea(form.elements.notes);
   form.elements.notes?.dispatchEvent(new Event("input", { bubbles: false }));
@@ -3777,11 +3894,21 @@ const closeEmailDialog = () => {
   const dialog = elements.emailDialog;
   const form = elements.emailForm;
   state.editingEmailId = null;
+  state.emailCompletedDraft = false;
   if (form) {
     form.reset();
     resetLinkList(elements.emailLinksList);
     if (elements.emailError) elements.emailError.textContent = "";
     applySavedTextareaHeight(form.elements.notes);
+  }
+  if (elements.emailDialogToggle) {
+    elements.emailDialogToggle.hidden = true;
+    elements.emailDialogToggle.disabled = true;
+    elements.emailDialogToggle.dataset.completedState = "false";
+    elements.emailDialogToggle.textContent = "Mark completed";
+  }
+  if (elements.emailDialogStatus) {
+    elements.emailDialogStatus.textContent = "";
   }
   if (dialog) {
     if (typeof dialog.close === "function") dialog.close();
@@ -3789,10 +3916,15 @@ const closeEmailDialog = () => {
   }
 };
 
-const handleEmailFormSubmit = (event) => {
-  event.preventDefault();
+const commitEmailForm = ({ allowCreate = false } = {}) => {
   const form = elements.emailForm;
-  if (!form) return;
+  if (!form) return false;
+  const isEditing = Boolean(state.editingEmailId);
+  if (!isEditing && !allowCreate) {
+    if (elements.emailError) elements.emailError.textContent = "";
+    return true;
+  }
+
   const titleField = form.elements.title;
   const title = titleField?.value?.trim() ?? "";
   if (!title) {
@@ -3800,7 +3932,7 @@ const handleEmailFormSubmit = (event) => {
       elements.emailError.textContent = "Title is required.";
     }
     titleField?.focus();
-    return;
+    return false;
   }
 
   const projectId = form.elements.projectId.value || "inbox";
@@ -3808,7 +3940,8 @@ const handleEmailFormSubmit = (event) => {
   const sectionId = getDefaultSectionId(projectId);
   const links = collectLinks(elements.emailLinksList);
   const existing = state.tasks.find((task) => task.id === state.editingEmailId);
-  const metadata = existing?.metadata && typeof existing.metadata === "object" ? { ...existing.metadata } : {};
+  const metadata =
+    existing?.metadata && typeof existing.metadata === "object" ? { ...existing.metadata } : {};
   metadata.emailAddress = form.elements.emailAddress.value.trim();
   metadata.status = form.elements.status.value;
   metadata.links = links;
@@ -3825,19 +3958,55 @@ const handleEmailFormSubmit = (event) => {
     source: existing?.source ?? "manual",
     metadata,
     links,
+    completed: state.emailCompletedDraft,
   };
 
-  if (state.editingEmailId && existing) {
-    updateTask(state.editingEmailId, payload);
-  } else {
+  if (isEditing && existing) {
+    const updated = updateTask(state.editingEmailId, payload);
+    if (!updated) return false;
+    state.emailCompletedDraft = updated.completed;
+    updateEmailDialogCompletionState(updated.completed, updated.completedAt ?? null);
+  } else if (allowCreate) {
     addTask(payload);
   }
 
-  closeEmailDialog();
+  if (elements.emailError) elements.emailError.textContent = "";
+  return true;
+};
+
+const autoSaveEmailDialog = () => {
+  const saved = commitEmailForm({ allowCreate: false });
+  if (saved) {
+    closeEmailDialog();
+  }
+  return saved;
+};
+
+const handleEmailFormSubmit = (event) => {
+  event.preventDefault();
+  commitEmailForm({ allowCreate: true }) && closeEmailDialog();
 };
 
 const handleEmailFormClick = (event) => {
   const action = event.target.dataset.action;
+  if (action === "email-toggle-completion") {
+    event.preventDefault();
+    const nextCompleted = !state.emailCompletedDraft;
+    state.emailCompletedDraft = nextCompleted;
+    if (state.editingEmailId) {
+      const updated = updateTask(state.editingEmailId, { completed: nextCompleted });
+      if (updated) {
+        state.emailCompletedDraft = updated.completed;
+        updateEmailDialogCompletionState(updated.completed, updated.completedAt ?? null);
+      }
+    } else {
+      updateEmailDialogCompletionState(
+        nextCompleted,
+        nextCompleted ? new Date().toISOString() : null,
+      );
+    }
+    return;
+  }
   if (action === "email-add-link") {
     event.preventDefault();
     createLinkRow(elements.emailLinksList);
@@ -3854,7 +4023,7 @@ const handleEmailFormClick = (event) => {
   }
   if (action === "close-email") {
     event.preventDefault();
-    closeEmailDialog();
+    autoSaveEmailDialog();
   }
 };
 
@@ -4174,14 +4343,13 @@ const navigateToTask = (taskId) => {
   });
 };
 
-const handleDialogSubmit = (event) => {
-  event.preventDefault();
-  if (!state.editingTaskId) return;
+const commitTaskDialogChanges = () => {
+  if (!state.editingTaskId || !elements.dialogForm) return false;
   const data = new FormData(elements.dialogForm);
   const title = normaliseTitle(data.get("title") ?? "");
   if (!title) {
     window.alert("Title is required.");
-    return;
+    return false;
   }
 
   const projectId = data.get("project") || "inbox";
@@ -4200,17 +4368,37 @@ const handleDialogSubmit = (event) => {
       attachments: cloneAttachments(state.dialogAttachmentDraft),
       completed: elements.dialogForm.completed.checked,
     });
-    closeTaskDialog();
+    return true;
   } catch (error) {
     console.error("Failed to update task.", error);
     window.alert("Unable to save changes. Please try again.");
+    return false;
   }
+};
+
+const autoSaveTaskDialog = () => {
+  if (!elements.taskDialog) return false;
+  if (!state.editingTaskId) {
+    closeTaskDialog();
+    return true;
+  }
+  const saved = commitTaskDialogChanges();
+  if (saved) {
+    closeTaskDialog();
+  }
+  return saved;
+};
+
+const handleDialogSubmit = (event) => {
+  event.preventDefault();
+  commitTaskDialogChanges() && closeTaskDialog();
 };
 
 const handleDialogClick = (event) => {
   const action = event.target.dataset.action;
   if (action === "close") {
-    closeTaskDialog();
+    event.preventDefault();
+    autoSaveTaskDialog();
   } else if (action === "toggle-task-completion" && state.editingTaskId) {
     const current = state.tasks.find((entry) => entry.id === state.editingTaskId);
     if (!current || current.deletedAt) return;
@@ -5666,13 +5854,13 @@ const registerEventListeners = () => {
   elements.meetingActionInput?.addEventListener("paste", handleMeetingActionInputPaste);
   elements.meetingDialog?.addEventListener("cancel", (event) => {
     event.preventDefault();
-    closeMeetingDialog();
+    autoSaveMeetingDialog();
   });
   elements.emailForm?.addEventListener("submit", handleEmailFormSubmit);
   elements.emailForm?.addEventListener("click", handleEmailFormClick);
   elements.emailDialog?.addEventListener("cancel", (event) => {
     event.preventDefault();
-    closeEmailDialog();
+    autoSaveEmailDialog();
   });
   elements.userguideEditToggle?.addEventListener("click", handleUserguideEditToggle);
   elements.userguideCancelEdit?.addEventListener("click", handleUserguideCancelEdit);
@@ -5737,7 +5925,7 @@ const registerEventListeners = () => {
   elements.dialogAttachmentsInput?.addEventListener("change", handleDialogAttachmentsInput);
   elements.taskDialog?.addEventListener("cancel", (event) => {
     event.preventDefault();
-    closeTaskDialog();
+    autoSaveTaskDialog();
   });
 
   elements.manageMembers?.addEventListener("click", openMembersDialog);

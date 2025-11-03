@@ -50,6 +50,29 @@ const DEFAULT_DEPARTMENT = {
 };
 
 const DEFAULT_SECTION_NAME = "General";
+const PROJECT_OVERVIEW_GROUPS = [
+  {
+    id: "regular",
+    title: "Regular Tasks",
+    filter: (task) => (task.kind ?? "task") === "task" && (task.source ?? "manual") !== "whatsapp",
+  },
+  {
+    id: "whatsapp",
+    title: "WhatsApp Tasks",
+    filter: (task) => (task.source ?? "") === "whatsapp",
+  },
+  {
+    id: "meeting",
+    title: "Meetings",
+    filter: (task) => (task.kind ?? "task") === "meeting",
+  },
+  {
+    id: "email",
+    title: "Emails",
+    filter: (task) => (task.kind ?? "task") === "email",
+  },
+];
+const MEETING_TYPES = ["Google Meet", "Teams", "Zoom", "In Person"];
 const PROJECT_COLORS = ["#246fe0", "#fa968f", "#ffc247", "#8f3ffc", "#24a564", "#e25dd2", "#00a896"];
 const PRIORITY_WEIGHT = { critical: 0, "very-high": 1, high: 2, medium: 3, low: 4, optional: 5 };
 const PRIORITY_LABELS = {
@@ -60,17 +83,69 @@ const PRIORITY_LABELS = {
   low: "Low priority",
   optional: "Optional priority",
 };
+const MIN_TEXTAREA_HEIGHT = 72;
+const MAX_TEXTAREA_HEIGHT = 720;
+const AUTOSIZE_RESET_KEYS = new Set([
+  "quick-add-description",
+  "dialog-description",
+  "meeting-notes",
+  "email-notes",
+]);
 const DEFAULT_USERGUIDE = [
-  "Start by choosing a company from the dropdown under the search bar. Each company keeps a separate set of projects, sections, tasks, team metrics, and preferences.",
-  "Need a new company? Open the Company dropdown, hit New company, optionally add its first project, and use the pencil/trash buttons beside any company to rename or remove it when the work wraps up.",
-  "Open the Project dropdown to jump directly into work for the current company. Add projects with the inline + button, rename them with the pencil icon, or delete unused ones (trash) to keep the list lean.",
-  "Stay organised with sections: click Add section while viewing a project, rename sections from their column menu, delete extras when finished, and drag section headers to reorder the workflow.",
-  "Capture work through Quick Add or while editing an existing card. Pick the correct company/project/section, add due dates, priorities, departments, assignees, and attachments, then drag cards between sections as work progresses.",
-  "Switch between List and Board views using the toggle in the hero card. Board view is project-specific and lets you drag cards between sections; List view works everywhere for quick triage.",
-  "Moving work across companies? Edit the task (or project), choose the new project from the dropdown, and the linked company updates automatically while keeping task history intact.",
-  "Use the Manage Members and Manage Departments buttons to keep team data current so you can assign tasks accurately and keep dashboard metrics meaningful.",
-  "Before changing processes, export the workspace (Download button in the header) or copy the latest build so you always have a reference snapshot.",
-  "Keep this Userguide current: click Userguide -> Edit guide whenever instructions change so the whole team sees the latest way of working.",
+  "## Workspace overview",
+  "### Tabs and scope",
+  "- Workspace lists unscheduled tasks for the active company.",
+  "- Due Today and Upcoming 7 Days highlight urgent work and update their counters automatically.",
+  "- Switch companies from the pill strip; use the three-dot menu on each pill to rename or archive a company safely.",
+  "### Projects",
+  "- Pick a project from the dropdown to review its overview cards (Regular Tasks, WhatsApp Tasks, Meetings, Emails).",
+  "- Use the Meeting and Email quick actions beside a project to open the respective creation dialogs instantly.",
+  "- Select See more inside any card to expand beyond the latest five records.",
+  "## Capturing work",
+  "### Tasks",
+  "- Click Add Task for a quick capture or open any task row to edit the full detail dialog.",
+  "- Description fields start at three lines and expand automatically as you type.",
+  "- Task cards surface the first three lines of notes plus assignee, action items, and due dates at a glance.",
+  "- Use the Mark completed / Restore control inside the task dialog to switch status.",
+  "- Closing the task window, clicking outside, or pressing Save all capture your changes automatically.",
+  "### Meetings",
+  "- Use the Meeting quick action to log attendees, meeting type, links, notes and follow-up items.",
+  "- Action items appear as an interactive checklist. Paste multiple lines to create a list automatically and tick entries off as work lands.",
+  "- Meetings surface under the project overview so you can monitor follow-ups without leaving the overview tab.",
+  "- Mark meetings complete from the dialog header and any changes are auto-saved when you close.",
+  "### Emails",
+  "- The Email quick action tracks important threads with status, notes and supporting links.",
+  "- Notes resize with the content and remember the height you prefer for long summaries.",
+  "- Mark emails complete straight from the header; closing the window auto-saves edits too.",
+  "## Finding context",
+  "- The global search provides live suggestions; selecting a result jumps to the correct company/project and opens the task dialog.",
+  "- All Activity now includes Created, Updated, Completed and Deleted tabs for a richer audit trail.",
+  "- Click anywhere on a task (outside of buttons) to open its detail dialog, no need to hunt for the Edit button.",
+  "## Administration and exports",
+  "- Manage members and departments from Settings so assignments and filters stay accurate across the workspace.",
+  "- Use the Workspace export button in Settings to download tasks, projects, sections, companies, members, departments and the userguide as JSON.",
+  "- Deleting a project or company preserves its tasks by moving them into Workspace under the default company.",
+  "- Members and departments can be edited inline from Settings - adjust names or move people between departments without leaving the page.",
+  "## Recent improvements",
+  "- Project settings open in a dedicated dialog so you can rename, reassign, or delete with confirmation.",
+  "- Meeting and Email quick actions sit on their own row in the project picker for easier tapping.",
+  "- Completed tasks highlight a Restore button in the editor, and search jumps now spotlight the matching card.",
+  "## Maintaining this guide",
+  "- Update the userguide whenever processes change. Headings (`##`, `###`), bullet lists (`- item`) and numbered steps (`1.`) are supported.",
+  "- Keep entries concise but complete so teammates can follow the latest workflow without additional training.",
+];
+
+const USERGUIDE_LATEST_ENTRIES = [
+  "- Task cards surface the first three lines of notes plus assignee, action items, and due dates at a glance.",
+  "- Use the Mark completed / Restore control inside the task dialog to switch status.",
+  "- Closing any task, meeting, or email dialog now auto-saves your edits.",
+  "- Meeting and Email editors include Mark completed toggles so you can finish work without leaving the dialog.",
+  "- Settings shows members and departments as editable inline lists for quick updates.",
+  "- Every task type can be dragged between sections on the board view.",
+  "## Recent improvements",
+  "- Project settings open in a dedicated dialog so you can rename, reassign, or delete with confirmation.",
+  "- Meeting and Email quick actions sit on their own row in the project picker for easier tapping.",
+  "- Completed tasks highlight a Restore button in the editor, and search jumps now spotlight the matching card.",
 ];
 
 const LEGACY_USERGUIDE_V1 = [
@@ -99,7 +174,7 @@ const state = {
   members: [],
   departments: [],
   settings: null,
-  activeView: { type: "view", value: "inbox" },
+  activeView: { type: "view", value: "workspace" },
   activeCompanyId: DEFAULT_COMPANY.id,
   companyRecents: {},
   userguide: [...DEFAULT_USERGUIDE],
@@ -109,6 +184,14 @@ const state = {
   activeAllTab: "created",
   metricsFilter: "all",
   editingTaskId: null,
+  editingProjectId: null,
+  editingCompanyId: null,
+  editingMeetingId: null,
+  editingEmailId: null,
+  meetingActionDraft: [],
+  meetingCompletedDraft: false,
+  emailCompletedDraft: false,
+  textareaHeights: {},
   dragTaskId: null,
   dragSectionId: null,
   sectionDropTarget: null,
@@ -117,13 +200,15 @@ const state = {
   isEditingUserguide: false,
   openDropdown: null,
   dialogAttachmentDraft: [],
+  projectSectionLimits: {},
+  recentActivityLimit: 10,
   importJob: {
     file: null,
     status: "idle",
     error: "",
-    stats: null,
     model: GEMINI_MODEL,
     endpoint: WHATSAPP_DEFAULT_ENDPOINT,
+    stats: null,
   },
   imports: {
     whatsapp: {},
@@ -133,12 +218,13 @@ const state = {
 const elements = {
   viewList: document.getElementById("viewList"),
   viewCounts: {
-    inbox: document.querySelector('[data-count="inbox"]'),
+    workspace: document.querySelector('[data-count="workspace"]'),
     today: document.querySelector('[data-count="today"]'),
     upcoming: document.querySelector('[data-count="upcoming"]'),
   },
   searchInput: document.getElementById("searchInput"),
   searchInputMobile: document.getElementById("searchInput-mobile"),
+  searchResults: document.getElementById("searchResults"),
   profileAvatar: document.getElementById("profileAvatar"),
   profileNameDisplay: document.getElementById("profileNameDisplay"),
   metricFilter: document.getElementById("metricFilter"),
@@ -176,6 +262,8 @@ const elements = {
   exportTasks: document.getElementById("exportTasks"),
   taskDialog: document.getElementById("taskDialog"),
   dialogForm: document.getElementById("dialogForm"),
+  taskDialogStatus: document.querySelector("[data-task-status]"),
+  taskDialogToggle: document.querySelector('[data-action="toggle-task-completion"]'),
   dialogAttachmentsInput: document.querySelector('#dialogForm input[name="attachments"]'),
   dialogAttachmentList: document.querySelector('#dialogForm [data-dialog-attachment-list]'),
   taskTemplate: document.getElementById("taskItemTemplate"),
@@ -188,6 +276,36 @@ const elements = {
   projectDropdownMenu: document.getElementById("projectDropdownMenu"),
   projectDropdownList: document.getElementById("projectDropdownList"),
   projectDropdownLabel: document.getElementById("projectDropdownLabel"),
+  meetingDialog: document.getElementById("meetingDialog"),
+  meetingForm: document.getElementById("meetingForm"),
+  meetingProjectLabel: document.querySelector("[data-meeting-project]"),
+  meetingDialogStatus: document.querySelector("[data-meeting-status]"),
+  meetingDialogToggle: document.querySelector('[data-action="meeting-toggle-completion"]'),
+  meetingDepartment: document.querySelector('#meetingForm select[name="department"]'),
+  meetingPriority: document.querySelector('#meetingForm select[name="priority"]'),
+  meetingLinksList: document.querySelector("[data-meeting-links]"),
+  meetingError: document.querySelector("[data-meeting-error]"),
+  meetingActionList: document.querySelector("[data-meeting-action-list]"),
+  meetingActionInput: document.querySelector("[data-meeting-action-input]"),
+  emailDialog: document.getElementById("emailDialog"),
+  emailForm: document.getElementById("emailForm"),
+  emailProjectLabel: document.querySelector("[data-email-project]"),
+  emailDialogStatus: document.querySelector("[data-email-status]"),
+  emailDialogToggle: document.querySelector('[data-action="email-toggle-completion"]'),
+  emailDepartment: document.querySelector('#emailForm select[name="department"]'),
+  emailPriority: document.querySelector('#emailForm select[name="priority"]'),
+  emailStatus: document.querySelector('#emailForm select[name="status"]'),
+  emailLinksList: document.querySelector("[data-email-links]"),
+  emailError: document.querySelector("[data-email-error]"),
+  companyDialog: document.getElementById("companyDialog"),
+  companyForm: document.getElementById("companyForm"),
+  companyNameInput: document.getElementById("companyName"),
+  companyError: document.querySelector("[data-company-error]"),
+  projectDialog: document.getElementById("projectDialog"),
+  projectForm: document.getElementById("projectForm"),
+  projectNameInput: document.querySelector('#projectForm input[name="projectName"]'),
+  projectCompanySelect: document.querySelector('#projectForm select[name="projectCompany"]'),
+  projectError: document.querySelector("[data-project-error]"),
   userguideList: document.getElementById("userguideList"),
   userguideForm: document.getElementById("userguideForm"),
   userguideEditor: document.getElementById("userguideEditor"),
@@ -267,6 +385,7 @@ const savePreferences = () =>
     activeTaskTab: state.activeTaskTab,
     activeAllTab: state.activeAllTab,
     metricsFilter: state.metricsFilter,
+    textareaHeights: state.textareaHeights,
   });
 
 const applyStoredPreferences = () => {
@@ -291,6 +410,16 @@ const applyStoredPreferences = () => {
   }
   if (typeof prefs.metricsFilter === "string") {
     state.metricsFilter = prefs.metricsFilter;
+  }
+  if (prefs.textareaHeights && typeof prefs.textareaHeights === "object") {
+    state.textareaHeights = { ...prefs.textareaHeights };
+  }
+  if (state.textareaHeights) {
+    AUTOSIZE_RESET_KEYS.forEach((key) => {
+      if (key in state.textareaHeights) {
+        delete state.textareaHeights[key];
+      }
+    });
   }
 
   if (state.viewMode === "board" && state.activeView.type !== "project") {
@@ -443,11 +572,30 @@ const upgradeUserguideIfLegacy = () => {
   }
 };
 
+const ensureUserguideHasLatestEntries = () => {
+  if (!Array.isArray(state.userguide)) return;
+  let mutated = false;
+  USERGUIDE_LATEST_ENTRIES.forEach((entry) => {
+    if (!state.userguide.some((line) => line.trim() === entry.trim())) {
+      state.userguide.push(entry);
+      mutated = true;
+    }
+  });
+  if (mutated) {
+    saveJSON(STORAGE_KEYS.userguide, state.userguide);
+    if (remoteLoaded) {
+      saveUserguide();
+    } else {
+      pendingUserguideUpgrade = true;
+    }
+  }
+};
+
 const setActiveCompany = (companyId) => {
   if (companyId === ALL_COMPANY_ID) {
     if (state.activeCompanyId === ALL_COMPANY_ID) return;
     state.activeCompanyId = ALL_COMPANY_ID;
-    state.activeView = { type: "view", value: "inbox" };
+    state.activeView = { type: "view", value: "workspace" };
     state.activeTaskTab = "active";
     state.activeAllTab = "created";
     if (state.viewMode === "board") {
@@ -474,7 +622,7 @@ const setActiveCompany = (companyId) => {
     return;
   }
   if (state.activeView.type === "project") {
-    setActiveView("view", "inbox");
+    setActiveView("view", "workspace");
   } else {
     savePreferences();
     render();
@@ -618,6 +766,7 @@ const applyRemoteState = (data) => {
     whatsapp: { ...(incomingImports?.whatsapp ?? {}) },
   };
   upgradeUserguideIfLegacy();
+  ensureUserguideHasLatestEntries();
 
   ensureDefaultCompany();
   ensureDefaultProject();
@@ -767,6 +916,22 @@ const ensureTaskDefaults = (task) => {
   if (!Array.isArray(task.attachments)) {
     task.attachments = [];
   }
+  task.kind = normaliseTaskKind(task.kind);
+  task.source = normaliseTaskSource(task.source);
+  if (!task.metadata || typeof task.metadata !== "object") {
+    task.metadata = {};
+  }
+  task.links = normaliseTaskLinks(task.links);
+  const rawActionItems = Array.isArray(task.metadata.actionItems)
+    ? task.metadata.actionItems
+    : Array.isArray(task.actionItems)
+      ? task.actionItems
+      : [];
+  const actionItems = rawActionItems
+    .map((item) => normaliseActionItem(item))
+    .filter(Boolean);
+  task.metadata.actionItems = actionItems;
+  task.actionItems = actionItems;
 };
 const describeDueDate = (dueDate) => {
   if (!dueDate) return { label: "", className: "" };
@@ -796,6 +961,109 @@ const describeDueDate = (dueDate) => {
   return { label: formatted, className: "meta-chip" };
 };
 
+const getTaskDescriptionText = (task) => {
+  if (typeof task.description === "string" && task.description.trim()) {
+    return task.description.trim();
+  }
+  if (typeof task.metadata?.notes === "string" && task.metadata.notes.trim()) {
+    return task.metadata.notes.trim();
+  }
+  if (task.kind === "meeting" && typeof task.metadata?.attendees === "string") {
+    const attendees = task.metadata.attendees.trim();
+    if (attendees) {
+      return `Attendees: ${attendees}`;
+    }
+  }
+  return "";
+};
+
+const buildPreviewFromText = (text, lines = 3) => {
+  if (!text) return "";
+  const segments = text
+    .split(/\r?\n/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  if (!segments.length) return "";
+  return segments.slice(0, lines).join("\n");
+};
+
+const describeTaskPreview = (task) => {
+  const preview = buildPreviewFromText(getTaskDescriptionText(task));
+  return preview || "No notes yet.";
+};
+
+const describeTaskAssignee = (task) => {
+  const member = getMemberById(task.assigneeId);
+  return member ? `Assignee: ${member.name}` : "Assignee: Unassigned";
+};
+
+const describeTaskActionItems = (task) => {
+  const items = Array.isArray(task.metadata?.actionItems) ? task.metadata.actionItems : [];
+  if (!items.length) return "Action items: none";
+  const remaining = items.filter((item) => !item?.completed).length;
+  if (remaining === 0) {
+    return `Action items: ${items.length} complete`;
+  }
+  return `Action items: ${remaining}/${items.length} open`;
+};
+
+const describeTaskDueLabel = (task) => {
+  const { label } = describeDueDate(task.dueDate);
+  return label ? `Due ${label}` : "No due date";
+};
+
+const describeTaskCompletionStatus = (task) => {
+  if (!task.completed) return "In progress";
+  if (!task.completedAt) return "Completed";
+  const completedDate = new Date(task.completedAt);
+  if (Number.isNaN(completedDate.getTime())) return "Completed";
+  const formatted = new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: completedDate.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined,
+  }).format(completedDate);
+  return `Completed ${formatted}`;
+};
+
+const updateTaskDialogCompletionState = (task) => {
+  if (!elements.taskDialogToggle) return;
+  const completed = Boolean(task.completed);
+  elements.taskDialogToggle.textContent = completed ? "Restore task" : "Mark completed";
+  elements.taskDialogToggle.dataset.completedState = completed ? "true" : "false";
+  if (elements.taskDialogStatus) {
+    elements.taskDialogStatus.textContent = describeTaskCompletionStatus(task);
+  }
+  if (elements.dialogForm?.elements?.completed) {
+    elements.dialogForm.elements.completed.checked = completed;
+  }
+};
+
+const updateMeetingDialogCompletionState = (completed, completedAt = null) => {
+  if (elements.meetingDialogToggle) {
+    elements.meetingDialogToggle.dataset.completedState = completed ? "true" : "false";
+    elements.meetingDialogToggle.textContent = completed ? "Restore meeting" : "Mark completed";
+  }
+  if (elements.meetingDialogStatus) {
+    elements.meetingDialogStatus.textContent = describeTaskCompletionStatus({
+      completed,
+      completedAt,
+    });
+  }
+};
+
+const updateEmailDialogCompletionState = (completed, completedAt = null) => {
+  if (elements.emailDialogToggle) {
+    elements.emailDialogToggle.dataset.completedState = completed ? "true" : "false";
+    elements.emailDialogToggle.textContent = completed ? "Restore email" : "Mark completed";
+  }
+  if (elements.emailDialogStatus) {
+    elements.emailDialogStatus.textContent = describeTaskCompletionStatus({
+      completed,
+      completedAt,
+    });
+  }
+};
+
 const compareTasks = (a, b) => {
   const dueA = a.dueDate ? new Date(a.dueDate).getTime() : Number.POSITIVE_INFINITY;
   const dueB = b.dueDate ? new Date(b.dueDate).getTime() : Number.POSITIVE_INFINITY;
@@ -818,7 +1086,7 @@ const matchesActiveView = (task) => {
   if (!matchesCompany) return false;
 
   if (type === "view") {
-    if (value === "inbox") return task.projectId === "inbox";
+    if (value === "workspace") return task.projectId === "inbox";
     if (value === "today") {
       if (!task.dueDate) return false;
       const due = new Date(task.dueDate);
@@ -845,15 +1113,50 @@ const matchesSearch = (task) => {
   const member = getMemberById(task.assigneeId);
   const department = getDepartmentById(task.departmentId);
   const attachments = Array.isArray(task.attachments) ? task.attachments : [];
+  const links = Array.isArray(task.links) ? task.links : [];
+
+  const metadataValues = [];
+  if (task.metadata && typeof task.metadata === "object") {
+    Object.values(task.metadata).forEach((value) => {
+      if (typeof value === "string") {
+        metadataValues.push(value.toLowerCase());
+      } else if (Array.isArray(value)) {
+        value.forEach((entry) => {
+          if (typeof entry === "string") {
+            metadataValues.push(entry.toLowerCase());
+          } else if (entry && typeof entry === "object") {
+            Object.values(entry).forEach((nested) => {
+              if (typeof nested === "string") {
+                metadataValues.push(nested.toLowerCase());
+              }
+            });
+          }
+        });
+      } else if (value && typeof value === "object") {
+        Object.values(value).forEach((nested) => {
+          if (typeof nested === "string") {
+            metadataValues.push(nested.toLowerCase());
+          }
+        });
+      }
+    });
+  }
 
   return (
     task.title.toLowerCase().includes(needle) ||
     (task.description ?? "").toLowerCase().includes(needle) ||
+    (task.kind ?? "").toString().toLowerCase().includes(needle) ||
+    (task.source ?? "").toString().toLowerCase().includes(needle) ||
     (section?.name ?? "").toLowerCase().includes(needle) ||
     (member?.name ?? "").toLowerCase().includes(needle) ||
     (department?.name ?? "").toLowerCase().includes(needle) ||
     (project?.name ?? "").toLowerCase().includes(needle) ||
-    attachments.some((attachment) => (attachment.name ?? "").toLowerCase().includes(needle))
+    attachments.some((attachment) => (attachment.name ?? "").toLowerCase().includes(needle)) ||
+    links.some((link) =>
+      (link.title ?? "").toLowerCase().includes(needle) ||
+      (link.url ?? "").toLowerCase().includes(needle)
+    ) ||
+    metadataValues.some((entry) => entry.includes(needle))
   );
 };
 
@@ -866,7 +1169,77 @@ const setSearchTerm = (value) => {
   if (elements.searchInputMobile && elements.searchInputMobile.value !== trimmed) {
     elements.searchInputMobile.value = trimmed;
   }
+  if (!trimmed) {
+    hideSearchResults();
+  } else {
+    renderSearchResults();
+  }
   renderTasks();
+};
+
+const hideSearchResults = () => {
+  if (!elements.searchResults) return;
+  elements.searchResults.replaceChildren();
+  elements.searchResults.hidden = true;
+};
+
+const renderSearchResults = () => {
+  if (!elements.searchResults) return;
+  const term = state.searchTerm.trim().toLowerCase();
+  if (!term) {
+    hideSearchResults();
+    return;
+  }
+  const matches = state.tasks
+    .filter((task) => !task.deletedAt && matchesSearch(task))
+    .sort(
+      (a, b) =>
+        new Date(b.updatedAt || b.createdAt || 0).getTime() -
+        new Date(a.updatedAt || a.createdAt || 0).getTime()
+    )
+    .slice(0, 5);
+
+  const fragment = document.createDocumentFragment();
+  if (!matches.length) {
+    const empty = document.createElement("p");
+    empty.className = "search-suggestion__empty";
+    empty.textContent = "No matches yet.";
+    fragment.append(empty);
+  } else {
+    const list = document.createElement("ul");
+    list.className = "search-suggestion__list";
+    matches.forEach((task) => {
+      const item = document.createElement("li");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "search-suggestion__item";
+      button.dataset.action = "search-select-task";
+      button.dataset.taskId = task.id;
+      const title = document.createElement("span");
+      title.className = "search-suggestion__title";
+      title.textContent = task.title;
+      const meta = document.createElement("span");
+      meta.className = "search-suggestion__meta";
+      const metaParts = [];
+      const project = getProjectById(task.projectId);
+      if (project) metaParts.push(project.name);
+      const company = getCompanyById(task.companyId);
+      if (company && state.activeCompanyId === ALL_COMPANY_ID) {
+        metaParts.push(company.name);
+      }
+      if (task.kind && task.kind !== "task") {
+        metaParts.push(task.kind.charAt(0).toUpperCase() + task.kind.slice(1));
+      }
+      meta.textContent = metaParts.join(" ? ");
+      button.append(title, meta);
+      item.append(button);
+      list.append(item);
+    });
+    fragment.append(list);
+  }
+
+  elements.searchResults.replaceChildren(fragment);
+  elements.searchResults.hidden = false;
 };
 
 const tasksForCurrentView = () =>
@@ -909,13 +1282,15 @@ const renderCompanyTabs = () => {
     select.setAttribute("aria-pressed", String(company.id === state.activeCompanyId));
     wrapper.append(select);
 
-    const edit = document.createElement("button");
-    edit.type = "button";
-    edit.className = "company-tab__edit";
-    edit.dataset.action = "edit-company";
-    edit.dataset.companyId = company.id;
-    edit.textContent = "Edit";
-    wrapper.append(edit);
+    const menuButton = document.createElement("button");
+    menuButton.type = "button";
+    menuButton.className = "company-tab__menu-button";
+    menuButton.dataset.action = "open-company-dialog";
+    menuButton.dataset.companyId = company.id;
+    menuButton.setAttribute("aria-label", `Edit ${company.name}`);
+    menuButton.innerHTML =
+      '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="3" cy="8" r="1.25" fill="currentColor"/><circle cx="8" cy="8" r="1.25" fill="currentColor"/><circle cx="13" cy="8" r="1.25" fill="currentColor"/></svg>';
+    wrapper.append(menuButton);
     fragment.append(wrapper);
   });
 
@@ -989,6 +1364,18 @@ const renderProjectDropdown = () => {
 
       const actions = document.createElement("div");
       actions.className = "selector-item-actions";
+      const meetingAction = document.createElement("button");
+      meetingAction.type = "button";
+      meetingAction.className = "selector-action-btn";
+      meetingAction.dataset.action = "quick-meeting";
+      meetingAction.dataset.projectId = project.id;
+      meetingAction.textContent = "Meeting";
+      const emailAction = document.createElement("button");
+      emailAction.type = "button";
+      emailAction.className = "selector-action-btn";
+      emailAction.dataset.action = "quick-email";
+      emailAction.dataset.projectId = project.id;
+      emailAction.textContent = "Email";
       const edit = document.createElement("button");
       edit.type = "button";
       edit.className = "selector-action-btn";
@@ -996,7 +1383,7 @@ const renderProjectDropdown = () => {
       edit.dataset.projectId = project.id;
       edit.setAttribute("aria-label", `Rename ${project.name}`);
       edit.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 20h4l10-10-4-4L4 16v4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="m14 6 4 4" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
-      actions.append(edit);
+      actions.append(meetingAction, emailAction, edit);
       item.append(select, actions);
       fragment.append(item);
     });
@@ -1025,7 +1412,7 @@ const updateViewCounts = () => {
   const scopedTasks = tasksForCompany();
 
   const counts = {
-    inbox: scopedTasks.filter((task) => task.projectId === "inbox" && !task.completed).length,
+    workspace: scopedTasks.filter((task) => task.projectId === "inbox" && !task.completed).length,
     today: scopedTasks.filter((task) => {
       if (!task.dueDate || task.completed) return false;
       const due = new Date(task.dueDate);
@@ -1040,9 +1427,15 @@ const updateViewCounts = () => {
     }).length,
   };
 
-  elements.viewCounts.inbox.textContent = counts.inbox;
-  elements.viewCounts.today.textContent = counts.today;
-  elements.viewCounts.upcoming.textContent = counts.upcoming;
+  if (elements.viewCounts.workspace) {
+    elements.viewCounts.workspace.textContent = counts.workspace;
+  }
+  if (elements.viewCounts.today) {
+    elements.viewCounts.today.textContent = counts.today;
+  }
+  if (elements.viewCounts.upcoming) {
+    elements.viewCounts.upcoming.textContent = counts.upcoming;
+  }
 };
 
 const populateProjectOptions = () => {
@@ -1068,6 +1461,20 @@ const populateProjectOptions = () => {
       select.value = "inbox";
     }
   });
+};
+
+const populateProjectCompanyOptions = (select, selectedId) => {
+  if (!select) return;
+  const fragment = document.createDocumentFragment();
+  state.companies.forEach((company) => {
+    const option = document.createElement("option");
+    option.value = company.id;
+    option.textContent = company.name;
+    option.disabled = Boolean(company.isDefault && state.companies.length === 1);
+    fragment.append(option);
+  });
+  select.replaceChildren(fragment);
+  select.value = selectedId && getCompanyById(selectedId) ? selectedId : DEFAULT_COMPANY.id;
 };
 
 const populateSectionOptions = (select, projectId, preferredValue) => {
@@ -1172,12 +1579,13 @@ const updateSectionSelects = () => {
 };
 
 const updateActiveNav = () => {
+  if (!elements.viewList) return;
   elements.viewList
-    .querySelectorAll(".nav-item[data-view]")
+    .querySelectorAll("button[data-view]")
     .forEach((button) => {
-      const isActive =
-        state.activeView.type === "view" && button.dataset.view === state.activeView.value;
+      const isActive = state.activeView.type === "view" && button.dataset.view === state.activeView.value;
       button.classList.toggle("active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
     });
 };
 
@@ -1187,8 +1595,8 @@ const describeView = () => {
   }
   const { type, value } = state.activeView;
   if (type === "view") {
-    if (value === "inbox") {
-      return { title: "Inbox", subtitle: "All unscheduled tasks live here." };
+    if (value === "workspace") {
+      return { title: "Workspace", subtitle: "All unscheduled tasks live here." };
     }
     if (value === "today") {
       const formatted = new Intl.DateTimeFormat(undefined, {
@@ -1196,10 +1604,10 @@ const describeView = () => {
         month: "short",
         day: "numeric",
       }).format(new Date());
-      return { title: "Today", subtitle: formatted };
+      return { title: "Due Today", subtitle: formatted };
     }
     if (value === "upcoming") {
-      return { title: "Upcoming", subtitle: "Schedule ahead for the next few weeks." };
+      return { title: "Upcoming 7 Days", subtitle: "Schedule ahead for the next week." };
     }
   }
   if (type === "project") {
@@ -1260,89 +1668,31 @@ const pushMetaChip = (container, text, className = "meta-chip") => {
   container.append(chip);
 };
 
-const buildMeta = (task, container) => {
-  container.textContent = "";
-
-  const due = describeDueDate(task.dueDate);
-  if (due.label) pushMetaChip(container, due.label, due.className || "meta-chip");
-
-  if (task.createdAt) {
-    const createdDate = new Date(task.createdAt);
-    if (!Number.isNaN(createdDate.getTime())) {
-      const createdLabel = new Intl.DateTimeFormat(undefined, {
-        month: "short",
-        day: "numeric",
-        year: createdDate.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined,
-      }).format(createdDate);
-      pushMetaChip(container, `Created ${createdLabel}`, "meta-chip subtle");
-    }
-  }
-  if (task.deletedAt) {
-    const deletedDate = new Date(task.deletedAt);
-    if (!Number.isNaN(deletedDate.getTime())) {
-      const deletedLabel = new Intl.DateTimeFormat(undefined, {
-        month: "short",
-        day: "numeric",
-        year: deletedDate.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined,
-      }).format(deletedDate);
-      pushMetaChip(container, `Deleted ${deletedLabel}`, "meta-chip danger");
-    }
-  }
-
-  const section = getSectionById(task.sectionId);
-  if (section && !(state.viewMode === "board" && state.activeView.type === "project")) {
-    pushMetaChip(container, section.name);
-  }
-  const priorityLabel = PRIORITY_LABELS[task.priority];
-  if (priorityLabel && task.priority !== "medium") {
-    pushMetaChip(container, priorityLabel);
-  }
-
-  if (shouldShowProjectChip(task)) {
-    const project = getProjectById(task.projectId);
-    pushMetaChip(container, project ? project.name : "Unknown project");
-  }
-
-  const member = getMemberById(task.assigneeId);
-  if (member) pushMetaChip(container, member.name);
-
-  const department = getDepartmentById(task.departmentId);
-  if (department && !department.isDefault) pushMetaChip(container, department.name);
-
-  if (task.description) pushMetaChip(container, "Notes");
-};
-
 const renderTaskItem = (task) => {
   const fragment = elements.taskTemplate.content.cloneNode(true);
   const item = fragment.querySelector(".task-item");
-  const checkbox = fragment.querySelector('input[type="checkbox"]');
   const titleEl = fragment.querySelector(".task-title");
-  const metaEl = fragment.querySelector(".task-meta");
-  const contentEl = fragment.querySelector(".task-content");
+  const previewEl = fragment.querySelector(".task-preview");
+  const assigneeEl = fragment.querySelector(".task-meta-assignee");
+  const actionEl = fragment.querySelector(".task-meta-actions");
+  const dueEl = fragment.querySelector(".task-meta-due");
+  const editBtn = fragment.querySelector('[data-action="edit"]');
 
   item.dataset.taskId = task.id;
-  item.dataset.priority = task.priority;
+  item.dataset.priority = task.priority ?? "medium";
   titleEl.textContent = task.title;
-  titleEl.title = task.description ?? "";
-  checkbox.checked = task.completed;
-  item.classList.toggle("completed", task.completed);
-  if (task.deletedAt) {
-    item.classList.add("deleted");
-    checkbox.disabled = true;
-  } else {
-    checkbox.disabled = false;
-    item.classList.remove("deleted");
-  }
+  titleEl.title = task.title;
+  previewEl.textContent = describeTaskPreview(task);
+  assigneeEl.textContent = describeTaskAssignee(task);
+  actionEl.textContent = describeTaskActionItems(task);
+  dueEl.textContent = describeTaskDueLabel(task);
 
-  buildMeta(task, metaEl);
+  item.classList.toggle("completed", Boolean(task.completed));
+  item.classList.toggle("deleted", Boolean(task.deletedAt));
 
-  if (Array.isArray(task.attachments) && task.attachments.length && contentEl) {
-    const row = document.createElement("div");
-    row.className = "attachments-row";
-    task.attachments.forEach((attachment) => {
-      row.append(createAttachmentChip(attachment));
-    });
-    contentEl.append(row);
+  if (editBtn) {
+    editBtn.textContent = task.completed ? "View" : "Open";
+    editBtn.disabled = Boolean(task.deletedAt);
   }
 
   return item;
@@ -1384,6 +1734,101 @@ const getDeletedTasksForProject = (projectId) =>
   state.tasks.filter(
     (task) => task.projectId === projectId && task.deletedAt && matchesSearch(task)
   );
+
+const setProjectGroupLimit = (projectId, groupId, value) => {
+  if (!projectId || !groupId) return;
+  if (!state.projectSectionLimits[projectId]) {
+    state.projectSectionLimits[projectId] = {};
+  }
+  state.projectSectionLimits[projectId][groupId] = value;
+};
+
+const resolveProjectGroupLimit = (projectId, groupId, total) => {
+  const projectLimits = state.projectSectionLimits[projectId] ?? {};
+  const raw = projectLimits[groupId];
+  if (Number.isFinite(raw) && raw > 0) {
+    return Math.min(total, raw);
+  }
+  if (total > 5) return 5;
+  return total;
+};
+
+const renderProjectOverview = (projectId, tasks) => {
+  const container = document.createElement("div");
+  container.className = "project-overview";
+
+  PROJECT_OVERVIEW_GROUPS.forEach((group) => {
+    const groupTasks = tasks
+      .filter(group.filter)
+      .sort(
+        (a, b) =>
+          new Date(b.updatedAt || b.createdAt || 0).getTime() -
+          new Date(a.updatedAt || a.createdAt || 0).getTime()
+      );
+
+    const total = groupTasks.length;
+    const limit = total ? resolveProjectGroupLimit(projectId, group.id, total) : 0;
+    const visibleTasks = limit ? groupTasks.slice(0, limit) : [];
+
+    const card = document.createElement("article");
+    card.className = "overview-section";
+
+    const header = document.createElement("header");
+    header.className = "overview-section__header";
+    const title = document.createElement("h4");
+    title.textContent = group.title;
+    header.append(title);
+
+    if (total > visibleTasks.length) {
+      const moreButton = document.createElement("button");
+      moreButton.type = "button";
+      moreButton.className = "see-more";
+      moreButton.dataset.action = "project-overview-expand";
+      moreButton.dataset.projectId = projectId;
+      moreButton.dataset.groupId = group.id;
+      moreButton.dataset.total = String(total);
+      moreButton.textContent = "See more";
+      header.append(moreButton);
+    }
+
+    card.append(header);
+
+    const body = document.createElement("div");
+    body.className = "overview-section__body resizable-block";
+
+    if (visibleTasks.length) {
+      const list = document.createElement("ul");
+      list.className = "task-list compact";
+      visibleTasks.forEach((task) => list.append(renderTaskItem(task)));
+      body.append(list);
+    } else {
+      const empty = document.createElement("p");
+      empty.className = "overview-section__empty";
+      empty.textContent = `No ${group.title.toLowerCase()}.`;
+      body.append(empty);
+    }
+
+    card.append(body);
+    container.append(card);
+  });
+
+  if (!container.childElementCount) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "No tasks recorded for this project yet.";
+    container.append(empty);
+  }
+
+  return container;
+};
+
+const expandProjectOverviewSection = (projectId, groupId, total) => {
+  if (!projectId || !groupId) return;
+  const numericTotal = Number.parseInt(total ?? "0", 10);
+  const nextLimit = Number.isFinite(numericTotal) && numericTotal > 0 ? numericTotal : 50;
+  setProjectGroupLimit(projectId, groupId, nextLimit);
+  renderTasks();
+};
 
 const renderProjectSectionsList = (
   projectId,
@@ -1480,6 +1925,7 @@ const renderAllTaskOverview = () => {
   const tabs = [
     { id: "created", label: "Created" },
     { id: "updated", label: "Updated" },
+    { id: "completed", label: "Completed" },
     { id: "deleted", label: "Deleted" },
   ];
   if (!tabs.some((tab) => tab.id === state.activeAllTab)) {
@@ -1503,10 +1949,18 @@ const renderAllTaskOverview = () => {
           new Date(b.updatedAt || b.createdAt).getTime() -
           new Date(a.updatedAt || a.createdAt).getTime()
       );
-  } else {
+  } else if (state.activeAllTab === "deleted") {
     scopedTasks = state.tasks
       .filter((task) => task.deletedAt && matchesSearch(task))
       .sort((a, b) => new Date(b.deletedAt ?? 0).getTime() - new Date(a.deletedAt ?? 0).getTime());
+  } else {
+    scopedTasks = state.tasks
+      .filter((task) => task.completed && matchesSearch(task))
+      .sort((a, b) => {
+        const aTime = new Date(a.completedAt || a.updatedAt || a.createdAt || 0).getTime();
+        const bTime = new Date(b.completedAt || b.updatedAt || b.createdAt || 0).getTime();
+        return bTime - aTime;
+      });
   }
 
   panel.append(
@@ -1514,7 +1968,9 @@ const renderAllTaskOverview = () => {
       scopedTasks,
       state.activeAllTab === "deleted"
         ? "No deleted tasks yet."
-        : "No tasks match this filter right now."
+        : state.activeAllTab === "completed"
+          ? "No completed tasks yet."
+          : "No tasks match this filter right now."
     )
   );
   elements.taskTabPanels.replaceChildren(panel);
@@ -1547,18 +2003,12 @@ const renderListView = (tasks) => {
   panel.className = "task-pane";
 
   if (state.activeTaskTab === "active") {
-    const activeTasks = openTasks(tasks).sort(compareTasks);
+    const activeTasks = openTasks(tasks);
     if (isProjectScope) {
-      panel.append(
-        renderProjectSectionsList(state.activeView.value, activeTasks, {
-          includeEmpty: true,
-          emptyMessage: "Add a section to start organising this project.",
-          emptySectionMessage: "No tasks in this section yet.",
-        })
-      );
+      panel.append(renderProjectOverview(state.activeView.value, activeTasks));
     } else {
       panel.append(
-        renderSimpleTaskList(activeTasks, "No tasks here yet. Add one to get started.")
+        renderSimpleTaskList(activeTasks.sort(compareTasks), "No tasks here yet. Add one to get started.")
       );
     }
   } else if (state.activeTaskTab === "completed") {
@@ -1625,7 +2075,7 @@ const createBoardCard = (task) => {
 
   card.addEventListener("dragstart", handleBoardDragStart);
   card.addEventListener("dragend", handleBoardDragEnd);
-  card.addEventListener("dblclick", () => openTaskDialog(task.id));
+  card.addEventListener("dblclick", () => openTaskEditor(task));
 
   return card;
 };
@@ -1789,13 +2239,13 @@ const formatRelativeTime = (isoString) => {
 const renderActivityFeed = () => {
   if (!elements.activityFeed) return;
   const fragment = document.createDocumentFragment();
-  const recent = [...tasksForCompany()]
-    .sort((a, b) => {
-      const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
-      const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
-      return bTime - aTime;
-    })
-    .slice(0, 6);
+  const limit = Number.isFinite(state.recentActivityLimit) && state.recentActivityLimit > 0 ? state.recentActivityLimit : 10;
+  const sorted = [...tasksForCompany()].sort((a, b) => {
+    const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
+    const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
+    return bTime - aTime;
+  });
+  const recent = sorted.slice(0, limit);
 
   if (!recent.length) {
     const empty = document.createElement("p");
@@ -1852,20 +2302,95 @@ const renderActivityFeed = () => {
     });
   }
 
+  if (sorted.length > recent.length) {
+    const moreWrapper = document.createElement("div");
+    moreWrapper.className = "activity-more";
+    const moreButton = document.createElement("button");
+    moreButton.type = "button";
+    moreButton.className = "see-more";
+    moreButton.dataset.action = "show-more-activity";
+    moreButton.textContent = "Show more";
+    moreWrapper.append(moreButton);
+    fragment.append(moreWrapper);
+  }
+
   elements.activityFeed.replaceChildren(fragment);
+};
+
+const buildUserguideFragment = (entries) => {
+  const fragment = document.createDocumentFragment();
+  let currentList = null;
+  let listType = "";
+
+  const closeList = () => {
+    if (currentList) {
+      fragment.append(currentList);
+      currentList = null;
+      listType = "";
+    }
+  };
+
+  entries.forEach((rawLine) => {
+    const line = rawLine.trim();
+    if (!line) return;
+    if (line.startsWith("### ")) {
+      closeList();
+      const heading = document.createElement("h3");
+      heading.textContent = line.slice(4).trim();
+      fragment.append(heading);
+      return;
+    }
+    if (line.startsWith("## ")) {
+      closeList();
+      const heading = document.createElement("h2");
+      heading.textContent = line.slice(3).trim();
+      fragment.append(heading);
+      return;
+    }
+    if (/^[-]\s+/.test(line)) {
+      if (listType !== "ul") {
+        closeList();
+        currentList = document.createElement("ul");
+        currentList.className = "userguide-list__unordered";
+        listType = "ul";
+      }
+      const item = document.createElement("li");
+      item.textContent = line.replace(/^[-]\s+/, '').trim();
+      currentList.append(item);
+      return;
+    }
+    if (/^\d+\./.test(line)) {
+      if (listType !== "ol") {
+        closeList();
+        currentList = document.createElement("ol");
+        currentList.className = "userguide-list__ordered";
+        listType = "ol";
+      }
+      const item = document.createElement("li");
+      item.textContent = line.replace(/^\d+\.\s*/, '').trim();
+      currentList.append(item);
+      return;
+    }
+    closeList();
+    const paragraph = document.createElement("p");
+    paragraph.textContent = line;
+    fragment.append(paragraph);
+  });
+
+  closeList();
+  return fragment;
 };
 
 const renderUserguidePanel = () => {
   if (!elements.userguidePanel) return;
   if (elements.userguideList) {
-    const fragment = document.createDocumentFragment();
-    state.userguide.forEach((entry) => {
-      const item = document.createElement("li");
-      item.textContent = entry;
-      fragment.append(item);
-    });
-    elements.userguideList.replaceChildren(fragment);
-    elements.userguideList.hidden = state.isEditingUserguide;
+    if (state.isEditingUserguide) {
+      elements.userguideList.hidden = true;
+    } else {
+      const fragment = buildUserguideFragment(state.userguide);
+      elements.userguideList.replaceChildren(fragment);
+      elements.userguideList.hidden = false;
+    }
   }
   if (elements.userguideForm) {
     elements.userguideForm.hidden = !state.isEditingUserguide;
@@ -1977,7 +2502,7 @@ const setActiveView = (type, value) => {
     if (!project) {
       console.warn("Attempted to open unknown project", value);
       nextType = "view";
-      nextValue = "inbox";
+      nextValue = "workspace";
     } else {
       rememberProjectSelection(project.id);
     }
@@ -1990,9 +2515,309 @@ const setActiveView = (type, value) => {
   if (state.viewMode === "board" && nextType !== "project") {
     state.viewMode = "list";
   }
+  if (state.isUserguideOpen) {
+    closeUserguide();
+  }
   savePreferences();
   render();
 };
+const TASK_KINDS = new Set(["task", "meeting", "email"]);
+
+const normaliseTaskKind = (value) => {
+  if (typeof value !== "string") return "task";
+  const trimmed = value.trim().toLowerCase();
+  return TASK_KINDS.has(trimmed) ? trimmed : "task";
+};
+
+const normaliseTaskSource = (value) => {
+  if (typeof value !== "string") return "manual";
+  const trimmed = value.trim().toLowerCase();
+  return trimmed || "manual";
+};
+
+const normaliseTaskLinks = (links) => {
+  if (!Array.isArray(links)) return [];
+  return links
+    .map((link) => {
+      const title = typeof link?.title === "string" ? link.title.trim() : "";
+      const url = typeof link?.url === "string" ? link.url.trim() : "";
+      return { title, url };
+    })
+    .filter((entry) => entry.title || entry.url);
+};
+
+const autoResizeTextarea = (textarea) => {
+  if (!textarea) return;
+  textarea.style.height = "auto";
+  textarea.style.height = `${textarea.scrollHeight}px`;
+};
+
+const clampTextareaHeight = (value) =>
+  Math.min(Math.max(value, MIN_TEXTAREA_HEIGHT), MAX_TEXTAREA_HEIGHT);
+
+const saveTextareaHeight = (key, height) => {
+  if (!key || AUTOSIZE_RESET_KEYS.has(key)) return;
+  const value = clampTextareaHeight(height);
+  if (!state.textareaHeights) {
+    state.textareaHeights = {};
+  }
+  if (state.textareaHeights[key] === value) return;
+  state.textareaHeights = { ...state.textareaHeights, [key]: value };
+  savePreferences();
+};
+
+const applySavedTextareaHeight = (textarea) => {
+  if (!textarea) return;
+  const key = textarea.dataset.autosizeKey;
+  const defaultHeight = clampTextareaHeight(
+    Number.parseInt(textarea.dataset.autosizeDefault ?? "180", 10)
+  );
+  const stored = AUTOSIZE_RESET_KEYS.has(key)
+    ? defaultHeight
+    : clampTextareaHeight(state.textareaHeights?.[key] ?? defaultHeight);
+  textarea.style.minHeight = `${defaultHeight}px`;
+  textarea.style.height = `${stored}px`;
+};
+
+const registerAutosizeTextarea = (textarea) => {
+  if (!textarea || textarea.dataset.autosizeReady === "true") return;
+  const key = textarea.dataset.autosizeKey;
+  const defaultHeight = clampTextareaHeight(
+    Number.parseInt(textarea.dataset.autosizeDefault ?? "180", 10)
+  );
+  applySavedTextareaHeight(textarea);
+  textarea.style.resize = "vertical";
+  textarea.dataset.autosizeReady = "true";
+
+  const syncHeight = () => {
+    if (!key) return;
+    const baseline = AUTOSIZE_RESET_KEYS.has(key)
+      ? defaultHeight
+      : clampTextareaHeight(state.textareaHeights?.[key] ?? defaultHeight);
+    textarea.style.height = "auto";
+    const target = Math.max(baseline, textarea.scrollHeight);
+    textarea.style.height = `${target}px`;
+    saveTextareaHeight(key, target);
+  };
+
+  const persistResize = () => {
+    if (!key || AUTOSIZE_RESET_KEYS.has(key)) return;
+    saveTextareaHeight(key, textarea.offsetHeight);
+  };
+
+  textarea.addEventListener("input", syncHeight);
+  textarea.addEventListener("mouseup", persistResize);
+  textarea.addEventListener("touchend", persistResize);
+  syncHeight();
+};
+
+const initialiseTextareaAutosize = () => {
+  const textareas = document.querySelectorAll("[data-autosize-key]");
+  textareas.forEach((textarea) => registerAutosizeTextarea(textarea));
+};
+
+const createLinkRow = (list, link = {}) => {
+  if (!list) return null;
+  const row = document.createElement("li");
+  row.className = "link-row";
+  row.dataset.linkRow = "true";
+
+  const titleField = document.createElement("input");
+  titleField.type = "text";
+  titleField.placeholder = "Title";
+  titleField.className = "field-input";
+  titleField.value = link.title ?? "";
+  titleField.dataset.linkTitle = "true";
+
+  const urlField = document.createElement("input");
+  urlField.type = "url";
+  urlField.placeholder = "https://...";
+  urlField.className = "field-input";
+  urlField.value = link.url ?? "";
+  urlField.dataset.linkUrl = "true";
+
+  const removeButton = document.createElement("button");
+  removeButton.type = "button";
+  removeButton.className = "ghost-button small";
+  removeButton.dataset.action = "remove-link";
+  removeButton.textContent = "Remove";
+
+  row.append(titleField, urlField, removeButton);
+  list.append(row);
+  return row;
+};
+
+const resetLinkList = (list, links = []) => {
+  if (!list) return;
+  list.replaceChildren();
+  if (!links.length) {
+    createLinkRow(list);
+    return;
+  }
+  links.forEach((link) => createLinkRow(list, link));
+};
+
+const collectLinks = (list) => {
+  if (!list) return [];
+  return [...list.querySelectorAll('[data-link-row]')]
+    .map((row) => {
+      const titleInput = row.querySelector('[data-link-title]');
+      const urlInput = row.querySelector('[data-link-url]');
+      const title = titleInput?.value?.trim() ?? "";
+      const url = urlInput?.value?.trim() ?? "";
+      return { title, url };
+    })
+    .filter((entry) => entry.title || entry.url);
+};
+
+const normaliseActionItem = (item) => {
+  if (!item) return null;
+  const title = typeof item.title === "string" ? item.title.trim() : "";
+  if (!title) return null;
+  const completed = Boolean(item.completed);
+  const id = item.id || generateId("action-item");
+  return { id, title, completed };
+};
+
+const commitMeetingActionDraft = () => {
+  const committed = (state.meetingActionDraft || [])
+    .map((item) => normaliseActionItem(item))
+    .filter(Boolean);
+  state.meetingActionDraft = committed;
+  return committed;
+};
+
+const setMeetingActionDraft = (items = []) => {
+  const normalised = items
+    .map((item) => normaliseActionItem(item))
+    .filter(Boolean);
+  state.meetingActionDraft = normalised;
+};
+
+const addMeetingActionItems = (labels = []) => {
+  const additions = (Array.isArray(labels) ? labels : [labels])
+    .map((label) => {
+      if (typeof label !== "string") return null;
+      const trimmed = label.trim();
+      if (!trimmed) return null;
+      return { id: generateId("action-item"), title: trimmed, completed: false };
+    })
+    .filter(Boolean);
+  if (!additions.length) return;
+  state.meetingActionDraft = [...(state.meetingActionDraft || []), ...additions];
+  renderMeetingActionItems();
+};
+
+const updateMeetingActionItem = (id, updates) => {
+  if (!id || !updates) return;
+  state.meetingActionDraft = (state.meetingActionDraft || []).map((item) => {
+    if (item.id !== id) return item;
+    const next = { ...item, ...updates };
+    return normaliseActionItem(next) ?? item;
+  });
+  renderMeetingActionItems();
+};
+
+const removeMeetingActionItem = (id) => {
+  if (!id) return;
+  state.meetingActionDraft = (state.meetingActionDraft || []).filter((item) => item.id !== id);
+  renderMeetingActionItems();
+};
+
+const renderMeetingActionItems = () => {
+  const list = elements.meetingActionList;
+  if (!list) return;
+  list.replaceChildren();
+  const items = state.meetingActionDraft || [];
+  if (!items.length) {
+    const empty = document.createElement("p");
+    empty.className = "action-items-empty";
+    empty.textContent = "No action items captured yet.";
+    list.append(empty);
+    return;
+  }
+  items.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "action-item-row";
+    row.dataset.actionItemId = item.id;
+    if (item.completed) {
+      row.classList.add("completed");
+    }
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "action-item-checkbox";
+    checkbox.checked = item.completed;
+    checkbox.dataset.action = "meeting-toggle-action";
+    checkbox.dataset.actionItemId = item.id;
+
+    const textInput = document.createElement("input");
+    textInput.type = "text";
+    textInput.className = "field-input action-item-input";
+    textInput.value = item.title;
+    textInput.placeholder = "Describe the action item";
+    textInput.dataset.actionItemId = item.id;
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "ghost-button small";
+    removeBtn.dataset.action = "meeting-remove-action";
+    removeBtn.dataset.actionItemId = item.id;
+    removeBtn.textContent = "Remove";
+
+    row.append(checkbox, textInput, removeBtn);
+    list.append(row);
+  });
+};
+
+const handleMeetingActionListChange = (event) => {
+  const checkbox = event.target.closest(".action-item-checkbox");
+  if (!checkbox) return;
+  const id = checkbox.dataset.actionItemId;
+  updateMeetingActionItem(id, { completed: checkbox.checked });
+};
+
+const handleMeetingActionListInput = (event) => {
+  const input = event.target.closest(".action-item-input");
+  if (!input) return;
+  const id = input.dataset.actionItemId;
+  state.meetingActionDraft = (state.meetingActionDraft || []).map((item) => {
+    if (item.id !== id) return item;
+    return { ...item, title: input.value };
+  });
+};
+
+const handleMeetingActionInputKeydown = (event) => {
+  if (event.key !== "Enter") return;
+  const input = event.target.closest("[data-meeting-action-input]");
+  if (!input) return;
+  event.preventDefault();
+  const value = input.value.trim();
+  if (!value) return;
+  addMeetingActionItems(
+    value
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+  );
+  input.value = "";
+};
+
+const handleMeetingActionInputPaste = (event) => {
+  const input = event.target.closest("[data-meeting-action-input]");
+  if (!input) return;
+  const text = event.clipboardData?.getData("text");
+  if (!text) return;
+  event.preventDefault();
+  const items = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!items.length) return;
+  addMeetingActionItems(items);
+  input.value = "";
+};
+
 const addTask = (payload) => {
   const projectId = payload.projectId || "inbox";
   const project = getProjectById(projectId);
@@ -2003,6 +2828,8 @@ const addTask = (payload) => {
 
   const task = {
     id: generateId("task"),
+    kind: normaliseTaskKind(payload.kind),
+    source: normaliseTaskSource(payload.source),
     title: payload.title,
     description: payload.description,
     dueDate: payload.dueDate,
@@ -2013,7 +2840,13 @@ const addTask = (payload) => {
     departmentId: payload.departmentId || "",
     assigneeId: payload.assigneeId || "",
     attachments: Array.isArray(payload.attachments) ? payload.attachments : [],
-    completed: false,
+    metadata:
+      payload.metadata && typeof payload.metadata === "object"
+        ? { ...payload.metadata }
+        : {},
+    links: normaliseTaskLinks(payload.links),
+    completed: Boolean(payload.completed ?? false),
+    completedAt: payload.completed ? payload.completedAt ?? now : null,
     createdAt,
     updatedAt: now,
     deletedAt: null,
@@ -2024,7 +2857,6 @@ const addTask = (payload) => {
   render();
   return task;
 };
-
 const updateTask = (taskId, updates) => {
   const index = state.tasks.findIndex((task) => task.id === taskId);
   if (index === -1) return null;
@@ -2041,6 +2873,25 @@ const updateTask = (taskId, updates) => {
     ? updates.attachments
     : previous.attachments || [];
 
+  const hasSourceUpdate = Object.prototype.hasOwnProperty.call(updates, "source");
+  const hasMetadataUpdate = Object.prototype.hasOwnProperty.call(updates, "metadata");
+  const hasLinksUpdate = Object.prototype.hasOwnProperty.call(updates, "links");
+
+  const nextKind = normaliseTaskKind(updates.kind ?? previous.kind);
+  const nextSource = hasSourceUpdate
+    ? normaliseTaskSource(updates.source)
+    : normaliseTaskSource(previous.source);
+  const nextMetadata = hasMetadataUpdate
+    ? updates.metadata && typeof updates.metadata === "object"
+      ? { ...updates.metadata }
+      : {}
+    : previous.metadata && typeof previous.metadata === "object"
+    ? { ...previous.metadata }
+    : {};
+  const nextLinks = hasLinksUpdate
+    ? normaliseTaskLinks(updates.links)
+    : normaliseTaskLinks(previous.links);
+
   const completedFlag =
     updates.completed !== undefined ? updates.completed : previous.completed;
   let completedAt = previous.completedAt || null;
@@ -2054,6 +2905,10 @@ const updateTask = (taskId, updates) => {
   const updatedTask = {
     ...previous,
     ...updates,
+    kind: nextKind,
+    source: nextSource,
+    metadata: nextMetadata,
+    links: nextLinks,
     projectId: nextProjectId,
     sectionId: nextSectionId,
     companyId: project?.companyId ?? previous.companyId ?? DEFAULT_COMPANY.id,
@@ -2068,7 +2923,6 @@ const updateTask = (taskId, updates) => {
   render();
   return updatedTask;
 };
-
 const removeTask = (taskId) => {
   const index = state.tasks.findIndex((task) => task.id === taskId);
   if (index === -1) return;
@@ -2167,9 +3021,9 @@ const deleteSection = (sectionId) => {
 
 const renameProject = (projectId, nextName) => {
   const project = getProjectById(projectId);
-  if (!project) return;
+  if (!project) return { success: false, error: "Project not found." };
   const trimmed = nextName.trim();
-  if (!trimmed) return;
+  if (!trimmed) return { success: false, error: "Project name is required." };
   const exists = state.projects.some(
     (entry) =>
       entry.id !== projectId &&
@@ -2177,8 +3031,7 @@ const renameProject = (projectId, nextName) => {
       entry.name.toLowerCase() === trimmed.toLowerCase(),
   );
   if (exists) {
-    window.alert("Another project in this company already uses that name.");
-    return;
+    return { success: false, error: "Another project in this company already uses that name." };
   }
   project.name = trimmed;
   project.updatedAt = new Date().toISOString();
@@ -2186,6 +3039,43 @@ const renameProject = (projectId, nextName) => {
   renderProjectDropdown();
   renderHeader();
   renderTasks();
+  return { success: true };
+};
+
+const moveProjectToCompany = (projectId, targetCompanyId) => {
+  const project = getProjectById(projectId);
+  if (!project) return { success: false, error: "Project not found." };
+  const company = getCompanyById(targetCompanyId) ?? getCompanyById(DEFAULT_COMPANY.id);
+  if (!company) return { success: false, error: "Target company not found." };
+  if (project.companyId === company.id) {
+    return { success: true, changed: false };
+  }
+
+  const now = new Date().toISOString();
+  const previousCompanyId = project.companyId;
+  project.companyId = company.id;
+  project.updatedAt = now;
+  state.tasks = state.tasks.map((task) => {
+    if (task.projectId !== projectId) return task;
+    return { ...task, companyId: company.id, updatedAt: now };
+  });
+
+  Object.keys(state.companyRecents).forEach((companyId) => {
+    if (state.companyRecents[companyId] === projectId && companyId !== company.id) {
+      delete state.companyRecents[companyId];
+    }
+  });
+  state.companyRecents[company.id] = projectId;
+
+  saveProjects();
+  saveTasks();
+  ensureCompanyPreferences();
+  renderProjectDropdown();
+  renderCompanyTabs();
+  renderHeader();
+  renderTasks();
+
+  return { success: true, changed: previousCompanyId !== company.id };
 };
 
 const deleteProject = (projectId) => {
@@ -2198,7 +3088,31 @@ const deleteProject = (projectId) => {
   const confirmed = window.confirm(`Delete the project "${project.name}" and all of its tasks?`);
   if (!confirmed) return false;
 
-  state.tasks = state.tasks.filter((task) => task.projectId !== projectId);
+  ensureSectionForProject(DEFAULT_PROJECT.id);
+  const defaultSectionId = getDefaultSectionId(DEFAULT_PROJECT.id);
+  const company = getCompanyById(project.companyId);
+  const now = new Date().toISOString();
+
+  state.tasks = state.tasks.map((task) => {
+    if (task.projectId !== projectId) return task;
+    const metadata = task.metadata && typeof task.metadata === "object" ? { ...task.metadata } : {};
+    metadata.archivedFrom = {
+      projectId: project.id,
+      projectName: project.name,
+      companyId: project.companyId,
+      companyName: company?.name ?? "",
+      archivedAt: now,
+    };
+    return {
+      ...task,
+      projectId: DEFAULT_PROJECT.id,
+      sectionId: defaultSectionId,
+      companyId: DEFAULT_COMPANY.id,
+      metadata,
+      updatedAt: now,
+    };
+  });
+
   state.sections = state.sections.filter((section) => section.projectId !== projectId);
   state.projects = state.projects.filter((entry) => entry.id !== projectId);
   Object.keys(state.companyRecents).forEach((companyId) => {
@@ -2216,14 +3130,133 @@ const deleteProject = (projectId) => {
     if (remaining[0]) {
       setActiveView("project", remaining[0].id);
     } else {
-      setActiveView("view", "inbox");
+      setActiveView("view", "workspace");
     }
   } else {
     savePreferences();
     render();
   }
+  setActiveCompany(ALL_COMPANY_ID);
   return true;
 };
+
+const openProjectDialog = (projectId) => {
+  if (!elements.projectDialog || !elements.projectForm) return;
+  const project = getProjectById(projectId);
+  if (!project) return;
+  state.editingProjectId = projectId;
+
+  if (elements.projectNameInput) {
+    elements.projectNameInput.value = project.name;
+  }
+  populateProjectCompanyOptions(elements.projectCompanySelect, project.companyId);
+  if (elements.projectError) {
+    elements.projectError.textContent = "";
+  }
+  const deleteButton = elements.projectDialog.querySelector('[data-action="delete-project"]');
+  if (deleteButton) {
+    deleteButton.hidden = Boolean(project.isDefault);
+    deleteButton.disabled = Boolean(project.isDefault);
+  }
+
+  if (typeof elements.projectDialog.showModal === "function") {
+    elements.projectDialog.showModal();
+  } else {
+    elements.projectDialog.setAttribute("open", "true");
+  }
+};
+
+const closeProjectDialog = () => {
+  state.editingProjectId = null;
+  if (elements.projectForm) {
+    elements.projectForm.reset();
+  }
+  if (elements.projectError) {
+    elements.projectError.textContent = "";
+  }
+  if (elements.projectDialog) {
+    if (typeof elements.projectDialog.close === "function") {
+      elements.projectDialog.close();
+    } else {
+      elements.projectDialog.removeAttribute("open");
+    }
+  }
+};
+
+const handleProjectFormSubmit = (event) => {
+  event.preventDefault();
+  if (!state.editingProjectId) return;
+  const project = getProjectById(state.editingProjectId);
+  if (!project) {
+    if (elements.projectError) elements.projectError.textContent = "Project not found.";
+    return;
+  }
+
+  const nextName = elements.projectNameInput?.value ?? "";
+  const targetCompanyId = elements.projectCompanySelect?.value || DEFAULT_COMPANY.id;
+  const errors = [];
+  let changed = false;
+
+  if (targetCompanyId !== project.companyId) {
+    const moveResult = moveProjectToCompany(project.id, targetCompanyId);
+    if (!moveResult.success) {
+      errors.push(moveResult.error);
+    } else {
+      changed = moveResult.changed || changed;
+    }
+  }
+
+  if (nextName.trim() && nextName.trim() !== project.name) {
+    const renameResult = renameProject(project.id, nextName);
+    if (!renameResult.success) {
+      errors.push(renameResult.error);
+    } else {
+      changed = true;
+    }
+  }
+
+  if (!nextName.trim()) {
+    errors.push("Project name is required.");
+  }
+
+  if (errors.length) {
+    if (elements.projectError) elements.projectError.textContent = errors.join(" ");
+    return;
+  }
+
+  if (!changed) {
+    if (elements.projectError) elements.projectError.textContent = "No changes to save.";
+    return;
+  }
+
+  const updated = getProjectById(project.id);
+  if (updated) {
+    setActiveView("project", updated.id);
+  }
+  closeProjectDialog();
+};
+
+const handleProjectFormClick = (event) => {
+  const action = event.target.dataset.action;
+  if (action === "close-project") {
+    closeProjectDialog();
+    event.preventDefault();
+    return;
+  }
+  if (action === "delete-project" && state.editingProjectId) {
+    event.preventDefault();
+    const project = getProjectById(state.editingProjectId);
+    if (!project) return;
+    const confirmed = window.confirm(
+      `Delete the project "${project.name}"? All tasks will be moved to the workspace inbox.`,
+    );
+    if (confirmed) {
+      deleteProject(project.id);
+      closeProjectDialog();
+    }
+  }
+};
+
 
 const createCompany = (name) => {
   const trimmed = name.trim();
@@ -2250,26 +3283,6 @@ const createCompany = (name) => {
   return company;
 };
 
-const renameCompany = (companyId, nextName) => {
-  const company = getCompanyById(companyId);
-  if (!company) return;
-  const trimmed = nextName.trim();
-  if (!trimmed) return;
-  const exists = state.companies.some(
-    (entry) => entry.id !== companyId && entry.name.toLowerCase() === trimmed.toLowerCase(),
-  );
-  if (exists) {
-    window.alert("Another company already uses that name.");
-    return;
-  }
-  company.name = trimmed;
-  company.updatedAt = new Date().toISOString();
-  saveCompanies();
-  renderCompanyTabs();
-  renderProjectDropdown();
-  renderHeader();
-};
-
 const deleteCompany = (companyId) => {
   const company = getCompanyById(companyId);
   if (!company) return false;
@@ -2286,7 +3299,33 @@ const deleteCompany = (companyId) => {
     .filter((project) => project.companyId === companyId)
     .map((project) => project.id);
 
-  state.tasks = state.tasks.filter((task) => !projectIds.includes(task.projectId));
+  ensureSectionForProject(DEFAULT_PROJECT.id);
+  const defaultSectionId = getDefaultSectionId(DEFAULT_PROJECT.id);
+  const now = new Date().toISOString();
+  const companyLookup = getCompanyById(companyId);
+  const projectLookup = new Map(state.projects.map((project) => [project.id, project]));
+
+  state.tasks = state.tasks.map((task) => {
+    if (!projectIds.includes(task.projectId)) return task;
+    const originProject = projectLookup.get(task.projectId);
+    const metadata = task.metadata && typeof task.metadata === "object" ? { ...task.metadata } : {};
+    metadata.archivedFrom = {
+      projectId: originProject?.id ?? "",
+      projectName: originProject?.name ?? "",
+      companyId,
+      companyName: companyLookup?.name ?? "",
+      archivedAt: now,
+    };
+    return {
+      ...task,
+      projectId: DEFAULT_PROJECT.id,
+      sectionId: defaultSectionId,
+      companyId: DEFAULT_COMPANY.id,
+      metadata,
+      updatedAt: now,
+    };
+  });
+
   state.sections = state.sections.filter((section) => !projectIds.includes(section.projectId));
   state.projects = state.projects.filter((project) => project.companyId !== companyId);
   state.companies = state.companies.filter((entry) => entry.id !== companyId);
@@ -2309,12 +3348,13 @@ const deleteCompany = (companyId) => {
         render();
       }
     } else {
-      setActiveView("view", "inbox");
+      setActiveView("view", "workspace");
     }
   } else {
     savePreferences();
     render();
   }
+  setActiveCompany(ALL_COMPANY_ID);
   return true;
 };
 
@@ -2500,17 +3540,28 @@ const handleViewClick = (event) => {
   setActiveView("view", button.dataset.view);
 };
 
-const handleTaskCheckboxChange = (event) => {
-  if (event.target.type !== "checkbox") return;
-  const item = event.target.closest(".task-item");
-  if (!item) return;
-  updateTask(item.dataset.taskId, { completed: event.target.checked });
+const openTaskEditor = (task) => {
+  if (!task) return;
+  const kind = task.kind ?? "task";
+  if (kind === "meeting") {
+    openMeetingDialog(task.projectId, task);
+    return;
+  }
+  if (kind === "email") {
+    openEmailDialog(task.projectId, task);
+    return;
+  }
+  openTaskDialog(task.id);
 };
 
 const handleTaskActionClick = (event) => {
   const button = event.target.closest("[data-action]");
   if (!button) return;
   const action = button.dataset.action;
+  if (action === "project-overview-expand") {
+    expandProjectOverviewSection(button.dataset.projectId, button.dataset.groupId, button.dataset.total);
+    return;
+  }
   if (action === "edit-section") {
     const sectionId = button.dataset.sectionId;
     if (sectionId) {
@@ -2518,17 +3569,461 @@ const handleTaskActionClick = (event) => {
     }
     return;
   }
-  const item = button.closest(".task-item");
-  if (!item) return;
-  const taskId = item.dataset.taskId;
-
   if (action === "edit") {
-    openTaskDialog(taskId);
-  } else if (action === "delete") {
+    const item = button.closest(".task-item");
+    if (!item) return;
+    const task = state.tasks.find((entry) => entry.id === item.dataset.taskId);
+    if (!task) return;
+    openTaskEditor(task);
+    return;
+  }
+  if (action === "delete") {
+    const item = button.closest(".task-item");
+    if (!item) return;
+    const taskId = item.dataset.taskId;
     const confirmed = window.confirm("Delete this task? This cannot be undone.");
     if (confirmed) {
       removeTask(taskId);
     }
+  }
+};
+
+const handleTaskItemOpen = (event) => {
+  if (state.viewMode !== "list") return;
+  const item = event.target.closest(".task-item");
+  if (!item) return;
+  if (
+    event.target.closest(".task-actions") ||
+    event.target.closest(".task-checkbox") ||
+    event.target.closest("[data-action]") ||
+    event.target.closest("button") ||
+    event.target.closest("input") ||
+    event.target.closest("a")
+  ) {
+    return;
+  }
+  const task = state.tasks.find((entry) => entry.id === item.dataset.taskId);
+  if (!task || task.deletedAt) return;
+  openTaskEditor(task);
+};
+
+const prepareMeetingDialog = (projectId, task = null) => {
+  const form = elements.meetingForm;
+  if (!form) return;
+  form.reset();
+  const project = getProjectById(projectId);
+  if (elements.meetingProjectLabel) {
+    elements.meetingProjectLabel.textContent = project ? project.name : "Inbox";
+  }
+  form.elements.projectId.value = projectId || "inbox";
+  if (elements.meetingDepartment) {
+    populateDepartmentOptions(elements.meetingDepartment, task?.departmentId || "");
+  }
+  if (elements.meetingPriority) {
+    elements.meetingPriority.value = task?.priority ?? "medium";
+  }
+  form.elements.date.value = task?.dueDate ?? "";
+  form.elements.meetingType.value = task?.metadata?.meetingType ?? "";
+  form.elements.attendees.value = task?.metadata?.attendees ?? "";
+  form.elements.title.value = task?.title ?? "";
+  if (form.elements.notes) {
+    form.elements.notes.value = task?.description ?? "";
+  }
+
+  const actionItems = Array.isArray(task?.metadata?.actionItems) ? task.metadata.actionItems : [];
+  setMeetingActionDraft(actionItems);
+  renderMeetingActionItems();
+  if (elements.meetingActionInput) {
+    elements.meetingActionInput.value = "";
+  }
+  resetLinkList(elements.meetingLinksList, Array.isArray(task?.links) ? task.links : []);
+
+  state.meetingCompletedDraft = Boolean(task?.completed);
+  const completedAt = task?.completedAt ?? null;
+  const isEditing = Boolean(task);
+  if (elements.meetingDialogToggle) {
+    elements.meetingDialogToggle.hidden = !isEditing;
+    elements.meetingDialogToggle.disabled = !isEditing;
+  }
+  updateMeetingDialogCompletionState(state.meetingCompletedDraft, completedAt);
+  if (!isEditing && elements.meetingDialogStatus) {
+    elements.meetingDialogStatus.textContent = "";
+  }
+
+  if (elements.meetingError) elements.meetingError.textContent = "";
+  registerAutosizeTextarea(form.elements.attendees);
+  registerAutosizeTextarea(form.elements.notes);
+  form.elements.attendees?.dispatchEvent(new Event("input", { bubbles: false }));
+  form.elements.notes?.dispatchEvent(new Event("input", { bubbles: false }));
+};
+
+const openMeetingDialog = (projectId, task = null) => {
+  const dialog = elements.meetingDialog;
+  if (!dialog || !elements.meetingForm) return;
+  prepareMeetingDialog(projectId, task);
+  state.editingMeetingId = task?.id ?? null;
+  if (typeof dialog.showModal === "function") dialog.showModal();
+  else dialog.setAttribute("open", "true");
+  window.requestAnimationFrame(() => {
+    elements.meetingForm?.elements.title?.focus();
+  });
+};
+
+const closeMeetingDialog = () => {
+  const dialog = elements.meetingDialog;
+  const form = elements.meetingForm;
+  state.editingMeetingId = null;
+  state.meetingCompletedDraft = false;
+  if (form) {
+    form.reset();
+    resetLinkList(elements.meetingLinksList);
+    setMeetingActionDraft([]);
+    renderMeetingActionItems();
+    if (elements.meetingError) elements.meetingError.textContent = "";
+    applySavedTextareaHeight(form.elements.attendees);
+    applySavedTextareaHeight(form.elements.notes);
+  }
+  if (elements.meetingActionInput) {
+    elements.meetingActionInput.value = "";
+  }
+  if (elements.meetingDialogToggle) {
+    elements.meetingDialogToggle.hidden = true;
+    elements.meetingDialogToggle.disabled = true;
+    elements.meetingDialogToggle.dataset.completedState = "false";
+    elements.meetingDialogToggle.textContent = "Mark completed";
+  }
+  if (elements.meetingDialogStatus) {
+    elements.meetingDialogStatus.textContent = "";
+  }
+  if (dialog) {
+    if (typeof dialog.close === "function") dialog.close();
+    else dialog.removeAttribute("open");
+  }
+};
+
+const commitMeetingForm = ({ allowCreate = false } = {}) => {
+  const form = elements.meetingForm;
+  if (!form) return false;
+  const isEditing = Boolean(state.editingMeetingId);
+  if (!isEditing && !allowCreate) {
+    if (elements.meetingError) elements.meetingError.textContent = "";
+    return true;
+  }
+
+  const titleField = form.elements.title;
+  const title = titleField?.value?.trim() ?? "";
+  if (!title) {
+    if (elements.meetingError) {
+      elements.meetingError.textContent = "Title is required.";
+    }
+    titleField?.focus();
+    return false;
+  }
+
+  const projectId = form.elements.projectId.value || "inbox";
+  ensureSectionForProject(projectId);
+  const sectionId = getDefaultSectionId(projectId);
+  const links = collectLinks(elements.meetingLinksList);
+  const existing = state.tasks.find((task) => task.id === state.editingMeetingId);
+  const metadata =
+    existing?.metadata && typeof existing.metadata === "object" ? { ...existing.metadata } : {};
+  metadata.meetingType = form.elements.meetingType.value;
+  metadata.attendees = form.elements.attendees.value.trim();
+  const actionItems = commitMeetingActionDraft();
+  metadata.actionItems = actionItems;
+  metadata.links = links;
+
+  const payload = {
+    title,
+    description: form.elements.notes?.value?.trim() ?? "",
+    dueDate: form.elements.date.value || "",
+    priority: form.elements.priority.value || "medium",
+    projectId,
+    sectionId,
+    departmentId: form.elements.department.value || "",
+    kind: "meeting",
+    source: existing?.source ?? "manual",
+    metadata,
+    links,
+    actionItems,
+    completed: state.meetingCompletedDraft,
+  };
+
+  if (isEditing && existing) {
+    const updated = updateTask(state.editingMeetingId, payload);
+    if (!updated) return false;
+    state.meetingCompletedDraft = updated.completed;
+    updateMeetingDialogCompletionState(updated.completed, updated.completedAt ?? null);
+  } else if (allowCreate) {
+    addTask(payload);
+  }
+
+  if (elements.meetingError) elements.meetingError.textContent = "";
+  return true;
+};
+
+const autoSaveMeetingDialog = () => {
+  const saved = commitMeetingForm({ allowCreate: false });
+  if (saved) {
+    closeMeetingDialog();
+  }
+  return saved;
+};
+
+const handleMeetingFormSubmit = (event) => {
+  event.preventDefault();
+  commitMeetingForm({ allowCreate: true }) && closeMeetingDialog();
+};
+
+const handleMeetingFormClick = (event) => {
+  const action = event.target.dataset.action;
+  if (action === "meeting-toggle-completion") {
+    event.preventDefault();
+    const nextCompleted = !state.meetingCompletedDraft;
+    state.meetingCompletedDraft = nextCompleted;
+    if (state.editingMeetingId) {
+      const updated = updateTask(state.editingMeetingId, { completed: nextCompleted });
+      if (updated) {
+        state.meetingCompletedDraft = updated.completed;
+        updateMeetingDialogCompletionState(updated.completed, updated.completedAt ?? null);
+      }
+    } else {
+      updateMeetingDialogCompletionState(
+        nextCompleted,
+        nextCompleted ? new Date().toISOString() : null,
+      );
+    }
+    return;
+  }
+  if (action === "meeting-add-link") {
+    event.preventDefault();
+    createLinkRow(elements.meetingLinksList);
+    return;
+  }
+  if (action === "remove-link") {
+    event.preventDefault();
+    const row = event.target.closest('[data-link-row]');
+    row?.remove();
+    if (elements.meetingLinksList && elements.meetingLinksList.childElementCount === 0) {
+      createLinkRow(elements.meetingLinksList);
+    }
+    return;
+  }
+  if (action === "meeting-add-action") {
+    event.preventDefault();
+    const input = elements.meetingActionInput;
+    if (!input) return;
+    const value = input.value.trim();
+    if (!value) return;
+    addMeetingActionItems(
+      value
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean),
+    );
+    input.value = "";
+    input.focus();
+    return;
+  }
+  if (action === "meeting-remove-action") {
+    event.preventDefault();
+    const id = event.target.dataset.actionItemId;
+    removeMeetingActionItem(id);
+    return;
+  }
+  if (action === "close-meeting") {
+    event.preventDefault();
+    autoSaveMeetingDialog();
+  }
+};
+
+const prepareEmailDialog = (projectId, task = null) => {
+  const form = elements.emailForm;
+  if (!form) return;
+  form.reset();
+  const project = getProjectById(projectId);
+  if (elements.emailProjectLabel) {
+    elements.emailProjectLabel.textContent = project ? project.name : "Inbox";
+  }
+  form.elements.projectId.value = projectId || "inbox";
+  if (elements.emailDepartment) {
+    populateDepartmentOptions(elements.emailDepartment, task?.departmentId || "");
+  }
+  if (elements.emailPriority) {
+    elements.emailPriority.value = task?.priority ?? "medium";
+  }
+  if (elements.emailStatus) {
+    elements.emailStatus.value = task?.metadata?.status ?? "Pending";
+  }
+  form.elements.date.value = task?.dueDate ?? "";
+  form.elements.emailAddress.value = task?.metadata?.emailAddress ?? "";
+  form.elements.title.value = task?.title ?? "";
+  if (form.elements.notes) {
+    form.elements.notes.value = task?.description ?? "";
+  }
+  resetLinkList(elements.emailLinksList, Array.isArray(task?.links) ? task.links : []);
+  state.emailCompletedDraft = Boolean(task?.completed);
+  const completedAt = task?.completedAt ?? null;
+  const isEditing = Boolean(task);
+  if (elements.emailDialogToggle) {
+    elements.emailDialogToggle.hidden = !isEditing;
+    elements.emailDialogToggle.disabled = !isEditing;
+  }
+  updateEmailDialogCompletionState(state.emailCompletedDraft, completedAt);
+  if (!isEditing && elements.emailDialogStatus) {
+    elements.emailDialogStatus.textContent = "";
+  }
+  if (elements.emailError) elements.emailError.textContent = "";
+  registerAutosizeTextarea(form.elements.notes);
+  form.elements.notes?.dispatchEvent(new Event("input", { bubbles: false }));
+};
+
+const openEmailDialog = (projectId, task = null) => {
+  const dialog = elements.emailDialog;
+  if (!dialog || !elements.emailForm) return;
+  prepareEmailDialog(projectId, task);
+  state.editingEmailId = task?.id ?? null;
+  if (typeof dialog.showModal === "function") dialog.showModal();
+  else dialog.setAttribute("open", "true");
+  window.requestAnimationFrame(() => {
+    elements.emailForm?.elements.title?.focus();
+  });
+};
+
+const closeEmailDialog = () => {
+  const dialog = elements.emailDialog;
+  const form = elements.emailForm;
+  state.editingEmailId = null;
+  state.emailCompletedDraft = false;
+  if (form) {
+    form.reset();
+    resetLinkList(elements.emailLinksList);
+    if (elements.emailError) elements.emailError.textContent = "";
+    applySavedTextareaHeight(form.elements.notes);
+  }
+  if (elements.emailDialogToggle) {
+    elements.emailDialogToggle.hidden = true;
+    elements.emailDialogToggle.disabled = true;
+    elements.emailDialogToggle.dataset.completedState = "false";
+    elements.emailDialogToggle.textContent = "Mark completed";
+  }
+  if (elements.emailDialogStatus) {
+    elements.emailDialogStatus.textContent = "";
+  }
+  if (dialog) {
+    if (typeof dialog.close === "function") dialog.close();
+    else dialog.removeAttribute("open");
+  }
+};
+
+const commitEmailForm = ({ allowCreate = false } = {}) => {
+  const form = elements.emailForm;
+  if (!form) return false;
+  const isEditing = Boolean(state.editingEmailId);
+  if (!isEditing && !allowCreate) {
+    if (elements.emailError) elements.emailError.textContent = "";
+    return true;
+  }
+
+  const titleField = form.elements.title;
+  const title = titleField?.value?.trim() ?? "";
+  if (!title) {
+    if (elements.emailError) {
+      elements.emailError.textContent = "Title is required.";
+    }
+    titleField?.focus();
+    return false;
+  }
+
+  const projectId = form.elements.projectId.value || "inbox";
+  ensureSectionForProject(projectId);
+  const sectionId = getDefaultSectionId(projectId);
+  const links = collectLinks(elements.emailLinksList);
+  const existing = state.tasks.find((task) => task.id === state.editingEmailId);
+  const metadata =
+    existing?.metadata && typeof existing.metadata === "object" ? { ...existing.metadata } : {};
+  metadata.emailAddress = form.elements.emailAddress.value.trim();
+  metadata.status = form.elements.status.value;
+  metadata.links = links;
+
+  const payload = {
+    title,
+    description: form.elements.notes?.value?.trim() ?? "",
+    dueDate: form.elements.date.value || "",
+    priority: form.elements.priority.value || "medium",
+    projectId,
+    sectionId,
+    departmentId: form.elements.department.value || "",
+    kind: "email",
+    source: existing?.source ?? "manual",
+    metadata,
+    links,
+    completed: state.emailCompletedDraft,
+  };
+
+  if (isEditing && existing) {
+    const updated = updateTask(state.editingEmailId, payload);
+    if (!updated) return false;
+    state.emailCompletedDraft = updated.completed;
+    updateEmailDialogCompletionState(updated.completed, updated.completedAt ?? null);
+  } else if (allowCreate) {
+    addTask(payload);
+  }
+
+  if (elements.emailError) elements.emailError.textContent = "";
+  return true;
+};
+
+const autoSaveEmailDialog = () => {
+  const saved = commitEmailForm({ allowCreate: false });
+  if (saved) {
+    closeEmailDialog();
+  }
+  return saved;
+};
+
+const handleEmailFormSubmit = (event) => {
+  event.preventDefault();
+  commitEmailForm({ allowCreate: true }) && closeEmailDialog();
+};
+
+const handleEmailFormClick = (event) => {
+  const action = event.target.dataset.action;
+  if (action === "email-toggle-completion") {
+    event.preventDefault();
+    const nextCompleted = !state.emailCompletedDraft;
+    state.emailCompletedDraft = nextCompleted;
+    if (state.editingEmailId) {
+      const updated = updateTask(state.editingEmailId, { completed: nextCompleted });
+      if (updated) {
+        state.emailCompletedDraft = updated.completed;
+        updateEmailDialogCompletionState(updated.completed, updated.completedAt ?? null);
+      }
+    } else {
+      updateEmailDialogCompletionState(
+        nextCompleted,
+        nextCompleted ? new Date().toISOString() : null,
+      );
+    }
+    return;
+  }
+  if (action === "email-add-link") {
+    event.preventDefault();
+    createLinkRow(elements.emailLinksList);
+    return;
+  }
+  if (action === "remove-link") {
+    event.preventDefault();
+    const row = event.target.closest('[data-link-row]');
+    row?.remove();
+    if (elements.emailLinksList && elements.emailLinksList.childElementCount === 0) {
+      createLinkRow(elements.emailLinksList);
+    }
+    return;
+  }
+  if (action === "close-email") {
+    event.preventDefault();
+    autoSaveEmailDialog();
   }
 };
 
@@ -2582,6 +4077,10 @@ const resetQuickAddForm = () => {
   if (elements.quickAddAttachmentList) elements.quickAddAttachmentList.replaceChildren();
   if (elements.quickAddAttachments) elements.quickAddAttachments.value = "";
   syncQuickAddSelectors();
+  const descriptionField = elements.quickAddForm?.elements?.description;
+  if (descriptionField) {
+    applySavedTextareaHeight(descriptionField);
+  }
 };
 
 const openQuickAddForm = () => {
@@ -2736,7 +4235,7 @@ const handleClearAll = () => {
   saveDepartments();
   saveUserguide();
   saveImports();
-  setActiveView("view", "inbox");
+  setActiveView("view", "workspace");
 };
 
 const openTaskDialog = (taskId) => {
@@ -2750,6 +4249,8 @@ const openTaskDialog = (taskId) => {
 
   elements.dialogForm.title.value = task.title;
   elements.dialogForm.description.value = task.description ?? "";
+  registerAutosizeTextarea(elements.dialogForm.description);
+  elements.dialogForm.description?.dispatchEvent(new Event("input", { bubbles: false }));
   elements.dialogForm.dueDate.value = task.dueDate ?? "";
   elements.dialogForm.priority.value = task.priority ?? "medium";
   elements.dialogForm.project.value = task.projectId ?? "inbox";
@@ -2768,6 +4269,8 @@ const openTaskDialog = (taskId) => {
     elements.dialogAttachmentsInput.value = "";
   }
 
+  updateTaskDialogCompletionState(task);
+
   if (typeof elements.taskDialog.showModal === "function") {
     elements.taskDialog.showModal();
   } else {
@@ -2784,6 +4287,16 @@ const closeTaskDialog = () => {
   if (elements.dialogAttachmentsInput) {
     elements.dialogAttachmentsInput.value = "";
   }
+  if (elements.dialogForm?.elements?.description) {
+    applySavedTextareaHeight(elements.dialogForm.elements.description);
+  }
+  if (elements.taskDialogStatus) {
+    elements.taskDialogStatus.textContent = "";
+  }
+  if (elements.taskDialogToggle) {
+    elements.taskDialogToggle.dataset.completedState = "";
+    elements.taskDialogToggle.textContent = "Mark completed";
+  }
   if (typeof elements.taskDialog.close === "function") {
     elements.taskDialog.close();
   } else {
@@ -2791,40 +4304,52 @@ const closeTaskDialog = () => {
   }
 };
 
+const focusTaskRow = (taskId) => {
+  const row = document.querySelector(`.task-item[data-task-id="${taskId}"]`);
+  if (!row) return;
+  row.scrollIntoView({ block: "center", behavior: "smooth" });
+  row.classList.add("task-item--focus");
+  window.setTimeout(() => row.classList.remove("task-item--focus"), 1200);
+};
+
 const navigateToTask = (taskId) => {
   const task = state.tasks.find((entry) => entry.id === taskId);
   if (!task) return;
   const project = getProjectById(task.projectId);
   const companyId = project?.companyId ?? DEFAULT_COMPANY.id;
+  const isInbox = task.projectId === "inbox";
+  const isCompleted = Boolean(task.completed);
 
   if (state.activeCompanyId !== companyId) {
     setActiveCompany(companyId);
   }
 
-  if (task.projectId === "inbox") {
-    setActiveView("view", "inbox");
-  } else {
-    setActiveView("project", task.projectId);
-  }
-
-  state.activeTaskTab = "active";
-  state.activeAllTab = "created";
+  state.activeAllTab = isCompleted ? "completed" : "created";
+  state.activeTaskTab = !isInbox && isCompleted ? "completed" : "active";
 
   if (state.viewMode !== "list") {
     setViewMode("list");
   }
 
-  window.requestAnimationFrame(() => openTaskDialog(taskId));
+  if (isInbox) {
+    setActiveView("view", "workspace");
+  } else {
+    setActiveView("project", task.projectId);
+  }
+
+  window.requestAnimationFrame(() => {
+    focusTaskRow(taskId);
+    openTaskDialog(taskId);
+  });
 };
 
-const handleDialogSubmit = (event) => {
-  event.preventDefault();
-  if (!state.editingTaskId) return;
+const commitTaskDialogChanges = () => {
+  if (!state.editingTaskId || !elements.dialogForm) return false;
   const data = new FormData(elements.dialogForm);
   const title = normaliseTitle(data.get("title") ?? "");
   if (!title) {
     window.alert("Title is required.");
-    return;
+    return false;
   }
 
   const projectId = data.get("project") || "inbox";
@@ -2843,17 +4368,45 @@ const handleDialogSubmit = (event) => {
       attachments: cloneAttachments(state.dialogAttachmentDraft),
       completed: elements.dialogForm.completed.checked,
     });
-    closeTaskDialog();
+    return true;
   } catch (error) {
     console.error("Failed to update task.", error);
     window.alert("Unable to save changes. Please try again.");
+    return false;
   }
+};
+
+const autoSaveTaskDialog = () => {
+  if (!elements.taskDialog) return false;
+  if (!state.editingTaskId) {
+    closeTaskDialog();
+    return true;
+  }
+  const saved = commitTaskDialogChanges();
+  if (saved) {
+    closeTaskDialog();
+  }
+  return saved;
+};
+
+const handleDialogSubmit = (event) => {
+  event.preventDefault();
+  commitTaskDialogChanges() && closeTaskDialog();
 };
 
 const handleDialogClick = (event) => {
   const action = event.target.dataset.action;
   if (action === "close") {
-    closeTaskDialog();
+    event.preventDefault();
+    autoSaveTaskDialog();
+  } else if (action === "toggle-task-completion" && state.editingTaskId) {
+    const current = state.tasks.find((entry) => entry.id === state.editingTaskId);
+    if (!current || current.deletedAt) return;
+    const updated = updateTask(state.editingTaskId, { completed: !current.completed });
+    if (updated) {
+      updateTaskDialogCompletionState(updated);
+      focusTaskRow(updated.id);
+    }
   } else if (action === "delete" && state.editingTaskId) {
     const confirmed = window.confirm("Delete this task? This cannot be undone.");
     if (confirmed) {
@@ -2918,34 +4471,138 @@ const promptCreateCompany = () => {
   }
 };
 
-const openCompanyEditor = (companyId) => {
+const prepareCompanyDialog = (companyId) => {
+  if (!elements.companyForm) return false;
   const company = getCompanyById(companyId);
-  if (!company) return;
-  const nextName = window.prompt("Rename company", company.name);
-  if (nextName && nextName.trim() && nextName.trim() !== company.name) {
-    renameCompany(company.id, nextName);
+  if (!company) return false;
+  const input = elements.companyNameInput ?? elements.companyForm.elements.companyName;
+  if (input) {
+    input.value = company.name;
   }
-  if (!company.isDefault) {
-    const confirmDelete = window.confirm(
-      `Delete the company "${company.name}"? All related projects, sections, and tasks will be removed.`
-    );
-    if (confirmDelete) {
-      deleteCompany(company.id);
+  if (elements.companyError) {
+    elements.companyError.textContent = "";
+  }
+  const subtitle = elements.companyForm.querySelector("[data-company-subtitle]");
+  if (subtitle) {
+    subtitle.textContent = company.isDefault ? "Default company" : "";
+    subtitle.hidden = !company.isDefault;
+  }
+  const deleteButton = elements.companyForm.querySelector('[data-action="delete-company"]');
+  if (deleteButton) {
+    deleteButton.hidden = Boolean(company.isDefault);
+    deleteButton.disabled = Boolean(company.isDefault);
+  }
+  return true;
+};
+
+const openCompanyDialog = (companyId) => {
+  if (!elements.companyDialog) return;
+  const prepared = prepareCompanyDialog(companyId);
+  if (!prepared) return;
+  state.editingCompanyId = companyId;
+  if (typeof elements.companyDialog.showModal === "function") {
+    elements.companyDialog.showModal();
+  } else {
+    elements.companyDialog.setAttribute("open", "true");
+  }
+  window.requestAnimationFrame(() => {
+    const input = elements.companyNameInput ?? elements.companyForm?.elements.companyName;
+    input?.focus();
+    input?.select?.();
+  });
+};
+
+const closeCompanyDialog = () => {
+  state.editingCompanyId = null;
+  if (elements.companyForm) {
+    elements.companyForm.reset();
+  }
+  if (elements.companyError) {
+    elements.companyError.textContent = "";
+  }
+  if (!elements.companyDialog) return;
+  if (typeof elements.companyDialog.close === "function") {
+    elements.companyDialog.close();
+  } else {
+    elements.companyDialog.removeAttribute("open");
+  }
+};
+
+const handleCompanyFormSubmit = (event) => {
+  event.preventDefault();
+  if (!elements.companyForm) return;
+  const companyId = state.editingCompanyId;
+  const company = getCompanyById(companyId);
+  if (!company) {
+    closeCompanyDialog();
+    return;
+  }
+  const input = elements.companyNameInput ?? elements.companyForm.elements.companyName;
+  const nextName = input?.value?.trim() ?? "";
+  if (!nextName) {
+    if (elements.companyError) {
+      elements.companyError.textContent = "Company name is required.";
+    }
+    input?.focus();
+    return;
+  }
+  const duplicate = state.companies.some(
+    (entry) => entry.id !== companyId && entry.name.toLowerCase() === nextName.toLowerCase()
+  );
+  if (duplicate) {
+    if (elements.companyError) {
+      elements.companyError.textContent = "Another company already uses that name.";
+    }
+    input?.focus();
+    input?.select?.();
+    return;
+  }
+
+  if (nextName !== company.name) {
+    company.name = nextName;
+    company.updatedAt = new Date().toISOString();
+    saveCompanies();
+    renderCompanyTabs();
+    renderProjectDropdown();
+    renderHeader();
+  }
+
+  closeCompanyDialog();
+};
+
+const handleCompanyFormClick = (event) => {
+  const action = event.target.dataset.action;
+  if (!action) return;
+  if (action === "close-company") {
+    event.preventDefault();
+    closeCompanyDialog();
+    return;
+  }
+  if (action === "delete-company") {
+    event.preventDefault();
+    const companyId = state.editingCompanyId;
+    if (!companyId) return;
+    const deleted = deleteCompany(companyId);
+    if (deleted) {
+      closeCompanyDialog();
+    } else if (elements.companyError) {
+      elements.companyError.textContent = "Unable to delete this company.";
     }
   }
 };
 
 const handleCompanyTabsClick = (event) => {
-  const editButton = event.target.closest('[data-action="edit-company"]');
-  if (editButton) {
+  const menuButton = event.target.closest('[data-action="open-company-dialog"]');
+  if (menuButton) {
     event.preventDefault();
-    openCompanyEditor(editButton.dataset.companyId);
+    openCompanyDialog(menuButton.dataset.companyId);
     return;
   }
   const tabButton = event.target.closest("button[data-company-tab]");
   if (tabButton) {
     event.preventDefault();
     setActiveCompany(tabButton.dataset.companyTab);
+    hideSearchResults();
   }
 };
 
@@ -2973,7 +4630,21 @@ const handleGlobalActionClick = (event) => {
   }
 };
 
+const handleSearchResultClick = (event) => {
+  const button = event.target.closest('[data-action="search-select-task"]');
+  if (!button) return;
+  event.preventDefault();
+  navigateToTask(button.dataset.taskId);
+  setSearchTerm("");
+};
+
 const handleActivityClick = (event) => {
+  const moreButton = event.target.closest('[data-action="show-more-activity"]');
+  if (moreButton) {
+    state.recentActivityLimit = (state.recentActivityLimit || 10) + 10;
+    renderActivityFeed();
+    return;
+  }
   const button = event.target.closest("[data-task-link]");
   if (!button) return;
   event.preventDefault();
@@ -2981,19 +4652,7 @@ const handleActivityClick = (event) => {
 };
 
 const openProjectEditor = (projectId) => {
-  const project = getProjectById(projectId);
-  if (!project) return;
-  const nextName = window.prompt("Rename project", project.name);
-  if (nextName && nextName.trim() && nextName.trim() !== project.name) {
-    renameProject(project.id, nextName);
-  }
-  if (project.isDefault) return;
-  const confirmDelete = window.confirm(
-    `Delete the project "${project.name}"? All sections and tasks inside will be removed.`
-  );
-  if (confirmDelete) {
-    deleteProject(project.id);
-  }
+  openProjectDialog(projectId);
 };
 
 const openSectionEditor = (sectionId) => {
@@ -3031,6 +4690,20 @@ const handleProjectMenuClick = (event) => {
   const editButton = event.target.closest('[data-action="edit-project"]');
   if (editButton) {
     openProjectEditor(editButton.dataset.projectId);
+    closeDropdown("project");
+    return;
+  }
+
+  const meetingButton = event.target.closest('[data-action="quick-meeting"]');
+  if (meetingButton) {
+    openMeetingDialog(meetingButton.dataset.projectId);
+    closeDropdown("project");
+    return;
+  }
+
+  const emailButton = event.target.closest('[data-action="quick-email"]');
+  if (emailButton) {
+    openEmailDialog(emailButton.dataset.projectId);
     closeDropdown("project");
     return;
   }
@@ -3919,12 +5592,16 @@ const handleGlobalClick = (event) => {
   if (!event.target.closest(".selector-dropdown")) {
     closeAllDropdowns();
   }
+  if (!event.target.closest('[data-search-root]')) {
+    hideSearchResults();
+  }
 };
 
 const handleGlobalKeydown = (event) => {
   if (event.key === 'Escape') {
     closeAllDropdowns();
     closeUserguide();
+    hideSearchResults();
     if (state.isQuickAddOpen) {
       closeQuickAddForm();
     }
@@ -4127,6 +5804,7 @@ const hydrateStateFromLocal = () => {
     whatsapp: { ...(storedImports?.whatsapp ?? {}) },
   };
   upgradeUserguideIfLegacy();
+  ensureUserguideHasLatestEntries();
 
   ensureDefaultCompany();
   ensureDefaultProject();
@@ -4156,6 +5834,34 @@ const registerEventListeners = () => {
   elements.companyTabs?.addEventListener("click", handleCompanyTabsClick);
   elements.taskTabList?.addEventListener("click", handleTaskTabListClick);
   elements.projectDropdownMenu?.addEventListener("click", handleProjectMenuClick);
+  elements.companyForm?.addEventListener("submit", handleCompanyFormSubmit);
+  elements.companyForm?.addEventListener("click", handleCompanyFormClick);
+  elements.companyDialog?.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeCompanyDialog();
+  });
+  elements.projectForm?.addEventListener("submit", handleProjectFormSubmit);
+  elements.projectForm?.addEventListener("click", handleProjectFormClick);
+  elements.projectDialog?.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeProjectDialog();
+  });
+  elements.meetingForm?.addEventListener("submit", handleMeetingFormSubmit);
+  elements.meetingForm?.addEventListener("click", handleMeetingFormClick);
+  elements.meetingActionList?.addEventListener("change", handleMeetingActionListChange);
+  elements.meetingActionList?.addEventListener("input", handleMeetingActionListInput);
+  elements.meetingActionInput?.addEventListener("keydown", handleMeetingActionInputKeydown);
+  elements.meetingActionInput?.addEventListener("paste", handleMeetingActionInputPaste);
+  elements.meetingDialog?.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    autoSaveMeetingDialog();
+  });
+  elements.emailForm?.addEventListener("submit", handleEmailFormSubmit);
+  elements.emailForm?.addEventListener("click", handleEmailFormClick);
+  elements.emailDialog?.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    autoSaveEmailDialog();
+  });
   elements.userguideEditToggle?.addEventListener("click", handleUserguideEditToggle);
   elements.userguideCancelEdit?.addEventListener("click", handleUserguideCancelEdit);
   elements.userguideForm?.addEventListener("submit", handleUserguideSave);
@@ -4178,7 +5884,7 @@ const registerEventListeners = () => {
     closeWhatsappDialog();
   });
 
-  elements.taskTabPanels?.addEventListener("change", handleTaskCheckboxChange);
+  elements.taskTabPanels?.addEventListener("click", handleTaskItemOpen);
   elements.taskTabPanels?.addEventListener("click", handleTaskActionClick);
 
   if (elements.quickAddForm) {
@@ -4196,6 +5902,7 @@ const registerEventListeners = () => {
   if (elements.searchInputMobile) {
     elements.searchInputMobile.addEventListener("input", (event) => setSearchTerm(event.target.value));
   }
+  elements.searchResults?.addEventListener("click", handleSearchResultClick);
   elements.metricFilter?.addEventListener("change", (event) => {
     state.metricsFilter = event.target.value;
     savePreferences();
@@ -4218,7 +5925,7 @@ const registerEventListeners = () => {
   elements.dialogAttachmentsInput?.addEventListener("change", handleDialogAttachmentsInput);
   elements.taskDialog?.addEventListener("cancel", (event) => {
     event.preventDefault();
-    closeTaskDialog();
+    autoSaveTaskDialog();
   });
 
   elements.manageMembers?.addEventListener("click", openMembersDialog);
@@ -4246,6 +5953,8 @@ const registerEventListeners = () => {
 const init = async () => {
   registerEventListeners();
   await hydrateState();
+  initialiseTextareaAutosize();
+  renderMeetingActionItems();
   render();
 };
 
@@ -4260,3 +5969,26 @@ if (document.readyState === "loading") {
 } else {
   startApp();
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
