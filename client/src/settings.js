@@ -360,14 +360,67 @@ const populateMemberDepartmentOptions = (selectedId = "") => {
   elements.memberDepartment.value = selectedId || "";
 };
 
+const createDepartmentSelect = (selectedId = "", dataset = {}) => {
+  const select = document.createElement("select");
+  select.className = "field-input inline-select";
+  Object.entries(dataset).forEach(([key, value]) => {
+    if (value === undefined) return;
+    select.dataset[key] = value;
+  });
+
+  const defaultOption = document.createElement("option");
+  defaultOption.value = "";
+  defaultOption.textContent = "No department";
+  select.append(defaultOption);
+
+  teamDepartments.forEach((department) => {
+    const option = document.createElement("option");
+    option.value = department.id;
+    option.textContent = department.name;
+    select.append(option);
+  });
+
+  select.value = selectedId || "";
+  return select;
+};
+
 const renderDepartmentList = () => {
   if (!elements.departmentList) return;
+  if (!teamDepartments.length) {
+    const empty = document.createElement("li");
+    empty.textContent = "No departments yet.";
+    elements.departmentList.replaceChildren(empty);
+    return;
+  }
+
   const fragment = document.createDocumentFragment();
   teamDepartments.forEach((department) => {
     const item = document.createElement("li");
-    const label = document.createElement("span");
-    label.textContent = department.name;
-    item.append(label);
+    item.className = "settings-inline-item";
+
+    const fields = document.createElement("div");
+    fields.className = "settings-inline-fields";
+
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.className = "field-input inline-input";
+    nameInput.value = department.name;
+    nameInput.dataset.departmentName = department.id;
+    fields.append(nameInput);
+
+    item.append(fields);
+
+    const actions = document.createElement("div");
+    actions.className = "settings-inline-actions";
+
+    const saveButton = document.createElement("button");
+    saveButton.type = "button";
+    saveButton.className = "btn-secondary btn-compact";
+    saveButton.dataset.action = "update-department";
+    saveButton.dataset.departmentId = department.id;
+    saveButton.textContent = "Save";
+    actions.append(saveButton);
+
     if (!department.isDefault) {
       const removeButton = document.createElement("button");
       removeButton.type = "button";
@@ -375,46 +428,75 @@ const renderDepartmentList = () => {
       removeButton.dataset.action = "remove-department";
       removeButton.dataset.departmentId = department.id;
       removeButton.textContent = "Remove";
-      item.append(removeButton);
+      actions.append(removeButton);
+    } else {
+      const badge = document.createElement("span");
+      badge.className = "default-badge";
+      badge.textContent = "Default";
+      actions.append(badge);
     }
+
+    item.append(actions);
     fragment.append(item);
   });
-  if (!fragment.childElementCount) {
-    const empty = document.createElement("li");
-    empty.textContent = "No departments yet.";
-    fragment.append(empty);
-  }
+
   elements.departmentList.replaceChildren(fragment);
 };
 
 const renderMemberList = () => {
   if (!elements.memberList) return;
+  if (!teamMembers.length) {
+    const empty = document.createElement("li");
+    empty.textContent = "No members yet.";
+    elements.memberList.replaceChildren(empty);
+    return;
+  }
+
   const fragment = document.createDocumentFragment();
   teamMembers.forEach((member) => {
     const item = document.createElement("li");
-    const info = document.createElement("div");
-    const name = document.createElement("span");
-    name.className = "font-medium";
-    name.textContent = member.name;
-    const meta = document.createElement("small");
-    meta.className = "text-slate-500";
-    meta.textContent = getDepartmentName(member.departmentId);
-    info.append(name, meta);
-    item.append(info);
+    item.className = "settings-inline-item";
+
+    const fields = document.createElement("div");
+    fields.className = "settings-inline-fields";
+
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.className = "field-input inline-input";
+    nameInput.value = member.name;
+    nameInput.dataset.memberName = member.id;
+    fields.append(nameInput);
+
+    const departmentSelect = createDepartmentSelect(member.departmentId, {
+      memberDepartment: member.id,
+    });
+    fields.append(departmentSelect);
+
+    item.append(fields);
+
+    const actions = document.createElement("div");
+    actions.className = "settings-inline-actions";
+
+    const saveButton = document.createElement("button");
+    saveButton.type = "button";
+    saveButton.className = "btn-secondary btn-compact";
+    saveButton.dataset.action = "update-member";
+    saveButton.dataset.memberId = member.id;
+    saveButton.textContent = "Save";
+    actions.append(saveButton);
+
     const removeButton = document.createElement("button");
     removeButton.type = "button";
     removeButton.className = "ghost-button small";
     removeButton.dataset.action = "remove-member";
     removeButton.dataset.memberId = member.id;
     removeButton.textContent = "Remove";
-    item.append(removeButton);
+    actions.append(removeButton);
+
+    item.append(actions);
     fragment.append(item);
   });
-  if (!fragment.childElementCount) {
-    const empty = document.createElement("li");
-    empty.textContent = "No members yet.";
-    fragment.append(empty);
-  }
+
   elements.memberList.replaceChildren(fragment);
 };
 
@@ -455,6 +537,26 @@ const addDepartment = (name) => {
   return { department };
 };
 
+const updateDepartment = (departmentId, nextName) => {
+  const department = teamDepartments.find((entry) => entry.id === departmentId);
+  if (!department) return { error: "Department not found." };
+  const trimmed = nextName.trim();
+  if (!trimmed) return { error: "Department name is required." };
+  const exists = teamDepartments.some(
+    (entry) => entry.id !== departmentId && entry.name.toLowerCase() === trimmed.toLowerCase(),
+  );
+  if (exists) return { error: "That department already exists." };
+
+  department.name = trimmed;
+  department.updatedAt = new Date().toISOString();
+  syncTeamLocal();
+  renderDepartmentList();
+  populateMemberDepartmentOptions(elements.memberDepartment?.value || "");
+  renderMemberList();
+  syncTeamRemote();
+  return { success: true };
+};
+
 const removeDepartment = (departmentId) => {
   const department = teamDepartments.find((entry) => entry.id === departmentId);
   if (!department) return { error: "Department not found." };
@@ -486,6 +588,27 @@ const addMember = (name, departmentId) => {
   renderMemberList();
   syncTeamRemote();
   return { member };
+};
+
+const updateMember = (memberId, updates) => {
+  const memberIndex = teamMembers.findIndex((member) => member.id === memberId);
+  if (memberIndex === -1) return { error: "Member not found." };
+  const nextName = (updates?.name ?? teamMembers[memberIndex].name).trim();
+  if (!nextName) return { error: "Member name is required." };
+  const nextDepartment = updates?.departmentId ?? teamMembers[memberIndex].departmentId ?? "";
+
+  teamMembers[memberIndex] = {
+    ...teamMembers[memberIndex],
+    name: nextName,
+    departmentId: nextDepartment,
+    updatedAt: new Date().toISOString(),
+  };
+
+  syncTeamLocal();
+  renderMemberList();
+  populateMemberDepartmentOptions(elements.memberDepartment?.value || "");
+  syncTeamRemote();
+  return { success: true };
 };
 
 const removeMember = (memberId) => {
@@ -539,8 +662,26 @@ const handleMemberFormSubmit = (event) => {
 const handleMemberListClick = (event) => {
   const button = event.target.closest('[data-action]');
   if (!button) return;
-  if (button.dataset.action === "remove-member") {
+  const action = button.dataset.action;
+  if (action === "remove-member") {
     removeMember(button.dataset.memberId);
+    if (elements.memberError) elements.memberError.textContent = "";
+    return;
+  }
+  if (action === "update-member") {
+    const item = button.closest("li");
+    if (!item) return;
+    const memberId = button.dataset.memberId;
+    const nameInput = item.querySelector('input[data-member-name]');
+    const departmentSelect = item.querySelector('select[data-member-department]');
+    const { error } =
+      updateMember(memberId, {
+        name: nameInput?.value ?? "",
+        departmentId: departmentSelect?.value ?? "",
+      }) || {};
+    if (elements.memberError) {
+      elements.memberError.textContent = error ? error : "";
+    }
   }
 };
 
@@ -560,13 +701,18 @@ const handleDepartmentFormSubmit = (event) => {
 const handleDepartmentListClick = (event) => {
   const button = event.target.closest('[data-action]');
   if (!button) return;
-  if (button.dataset.action === "remove-department") {
+  const action = button.dataset.action;
+  if (action === "remove-department") {
     const { error } = removeDepartment(button.dataset.departmentId) || {};
-    if (error) {
-      if (elements.departmentError) elements.departmentError.textContent = error;
-    } else if (elements.departmentError) {
-      elements.departmentError.textContent = "";
-    }
+    if (elements.departmentError) elements.departmentError.textContent = error ? error : "";
+    return;
+  }
+  if (action === "update-department") {
+    const item = button.closest("li");
+    if (!item) return;
+    const input = item.querySelector('input[data-department-name]');
+    const { error } = updateDepartment(button.dataset.departmentId, input?.value ?? "") || {};
+    if (elements.departmentError) elements.departmentError.textContent = error ? error : "";
   }
 };
 

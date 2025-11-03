@@ -237,7 +237,7 @@
               </div>
               <div class="sm:col-span-2 lg:col-span-2 xl:col-span-3">
                 <label class="field-label">Description</label>
-                <textarea name="description" rows="3" placeholder="Context, blockers, next steps" class="field-input" data-autosize-key="quick-add-description" data-autosize-default="220"></textarea>
+              <textarea name="description" rows="3" placeholder="Context, blockers, next steps" class="field-input" data-autosize-key="quick-add-description" data-autosize-default="72"></textarea>
               </div>
               <div>
                 <label class="field-label">Due</label>
@@ -325,8 +325,14 @@
   <dialog id="taskDialog" class="modal">
     <form id="dialogForm" method="dialog" class="modal-card">
       <header class="modal-header">
-        <h2 class="text-lg font-semibold text-slate-900">Edit task</h2>
-        <button type="button" class="ghost-button small" data-action="close">Close</button>
+        <div>
+          <h2 class="text-lg font-semibold text-slate-900" id="taskDialogTitle">Task details</h2>
+          <p class="modal-subtitle text-xs text-slate-500" data-task-status></p>
+        </div>
+        <div class="modal-header__actions">
+          <button type="button" class="ghost-button small" data-action="toggle-task-completion">Mark completed</button>
+          <button type="button" class="ghost-button small" data-action="close">Close</button>
+        </div>
       </header>
       <div class="modal-body space-y-4">
         <label class="form-field">
@@ -335,7 +341,7 @@
         </label>
         <label class="form-field">
           <span class="field-label">Description</span>
-          <textarea name="description" rows="4" class="field-input" data-autosize-key="dialog-description" data-autosize-default="240"></textarea>
+          <textarea name="description" rows="3" class="field-input" data-autosize-key="dialog-description" data-autosize-default="72"></textarea>
         </label>
         <div class="form-row">
           <label class="form-field">
@@ -377,10 +383,7 @@
           <span class="field-label">Project</span>
           <select name="project" class="field-input"></select>
         </label>
-        <label class="checkbox-field">
-          <input type="checkbox" name="completed" />
-          <span>Mark as completed</span>
-        </label>
+        <input type="checkbox" name="completed" hidden />
       </div>
       <footer class="modal-footer">
         <button class="ghost-button danger" data-action="delete" type="button">Delete</button>
@@ -392,17 +395,17 @@
   <!-- Task item template -->
   <template id="taskItemTemplate">
     <li class="task-item task-card">
-      <label class="task-checkbox">
-        <input type="checkbox" aria-label="Mark task complete" />
-        <span class="checkbox-indicator" aria-hidden="true"></span>
-      </label>
       <div class="task-content">
         <p class="task-title text-slate-900 font-medium"></p>
-        <p class="task-meta text-sm text-slate-500 flex flex-wrap gap-2"></p>
+        <p class="task-preview text-sm text-slate-600"></p>
+        <div class="task-meta-grid">
+          <span class="task-meta-item task-meta-assignee text-xs text-slate-500"></span>
+          <span class="task-meta-item task-meta-actions text-xs text-slate-500"></span>
+          <span class="task-meta-item task-meta-due text-xs text-slate-500"></span>
+        </div>
       </div>
       <div class="task-actions flex items-center gap-2">
-        <button type="button" class="ghost-button small" data-action="complete">Mark completed</button>
-        <button type="button" class="chip-button" data-action="edit">Edit</button>
+        <button type="button" class="chip-button" data-action="edit">Open</button>
       </div>
     </li>
   </template>
@@ -426,6 +429,34 @@
         <button type="button" class="ghost-button danger" data-action="delete-company">Delete company</button>
         <div class="flex gap-2">
           <button type="button" class="ghost-button" data-action="close-company">Cancel</button>
+          <button type="submit" class="btn-primary">Save changes</button>
+        </div>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- Project dialog -->
+  <dialog id="projectDialog" class="modal">
+    <form id="projectForm" method="dialog" class="modal-card max-w-md" novalidate>
+      <header class="modal-header">
+        <h2 class="text-lg font-semibold text-slate-900">Project settings</h2>
+        <button type="button" class="ghost-button small" data-action="close-project">Close</button>
+      </header>
+      <div class="modal-body space-y-4">
+        <label class="form-field">
+          <span class="field-label">Project name</span>
+          <input type="text" name="projectName" required class="field-input" placeholder="Project name" />
+        </label>
+        <label class="form-field">
+          <span class="field-label">Company</span>
+          <select name="projectCompany" class="field-input"></select>
+        </label>
+        <p class="form-error" data-project-error></p>
+      </div>
+      <footer class="modal-footer justify-between">
+        <button type="button" class="ghost-button danger" data-action="delete-project">Delete project</button>
+        <div class="flex gap-2">
+          <button type="button" class="ghost-button" data-action="close-project">Cancel</button>
           <button type="submit" class="btn-primary">Save changes</button>
         </div>
       </footer>
@@ -499,7 +530,7 @@
         </label>
         <label class="form-field">
           <span class="field-label">Notes</span>
-          <textarea name="notes" rows="3" class="field-input" placeholder="Agenda, context and decisions" data-autosize-key="meeting-notes" data-autosize-default="260"></textarea>
+          <textarea name="notes" rows="3" class="field-input" placeholder="Agenda, context and decisions" data-autosize-key="meeting-notes" data-autosize-default="72"></textarea>
         </label>
         <div class="field-group">
           <div class="flex items-center justify-between">
@@ -569,7 +600,7 @@
         </label>
         <label class="form-field">
           <span class="field-label">Notes</span>
-          <textarea name="notes" rows="3" class="field-input" placeholder="Summary, next steps, context" data-autosize-key="email-notes" data-autosize-default="260"></textarea>
+          <textarea name="notes" rows="3" class="field-input" placeholder="Summary, next steps, context" data-autosize-key="email-notes" data-autosize-default="72"></textarea>
         </label>
         <div class="field-group">
           <div class="flex items-center justify-between">

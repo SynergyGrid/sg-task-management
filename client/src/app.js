@@ -83,6 +83,12 @@ const PRIORITY_LABELS = {
   low: "Low priority",
   optional: "Optional priority",
 };
+const AUTOSIZE_RESET_KEYS = new Set([
+  "quick-add-description",
+  "dialog-description",
+  "meeting-notes",
+  "email-notes",
+]);
 const DEFAULT_USERGUIDE = [
   "## Workspace overview",
   "### Tabs and scope",
@@ -96,8 +102,9 @@ const DEFAULT_USERGUIDE = [
   "## Capturing work",
   "### Tasks",
   "- Click Add Task for a quick capture or open any task row to edit the full detail dialog.",
-  "- Descriptions open with generous space, remember the height you last set, and remain vertically resizable.",
-  "- Every task row includes a Mark completed button; completed rows can be re-opened in one click.",
+  "- Description fields start at three lines and expand automatically as you type.",
+  "- Task cards surface the first three lines of notes plus assignee, action items, and due dates at a glance.",
+  "- Use the Mark completed / Restore control inside the task dialog to switch status.",
   "### Meetings",
   "- Use the Meeting quick action to log attendees, meeting type, links, notes and follow-up items.",
   "- Action items appear as an interactive checklist. Paste multiple lines to create a list automatically and tick entries off as work lands.",
@@ -113,9 +120,24 @@ const DEFAULT_USERGUIDE = [
   "- Manage members and departments from Settings so assignments and filters stay accurate across the workspace.",
   "- Use the Workspace export button in Settings to download tasks, projects, sections, companies, members, departments and the userguide as JSON.",
   "- Deleting a project or company preserves its tasks by moving them into Workspace under the default company.",
+  "- Members and departments can be edited inline from Settings—adjust names or move people between departments without leaving the page.",
+  "## Recent improvements",
+  "- Project settings open in a dedicated dialog so you can rename, reassign, or delete with confirmation.",
+  "- Meeting and Email quick actions sit on their own row in the project picker for easier tapping.",
+  "- Completed tasks highlight a Restore button in the editor, and search jumps now spotlight the matching card.",
   "## Maintaining this guide",
   "- Update the userguide whenever processes change. Headings (`##`, `###`), bullet lists (`- item`) and numbered steps (`1.`) are supported.",
   "- Keep entries concise but complete so teammates can follow the latest workflow without additional training.",
+];
+
+const USERGUIDE_LATEST_ENTRIES = [
+  "- Task cards surface the first three lines of notes plus assignee, action items, and due dates at a glance.",
+  "- Use the Mark completed / Restore control inside the task dialog to switch status.",
+  "- Members and departments can be edited inline from Settings—adjust names or move people between departments without leaving the page.",
+  "## Recent improvements",
+  "- Project settings open in a dedicated dialog so you can rename, reassign, or delete with confirmation.",
+  "- Meeting and Email quick actions sit on their own row in the project picker for easier tapping.",
+  "- Completed tasks highlight a Restore button in the editor, and search jumps now spotlight the matching card.",
 ];
 
 const LEGACY_USERGUIDE_V1 = [
@@ -154,6 +176,7 @@ const state = {
   activeAllTab: "created",
   metricsFilter: "all",
   editingTaskId: null,
+  editingProjectId: null,
   editingCompanyId: null,
   editingMeetingId: null,
   editingEmailId: null,
@@ -229,6 +252,8 @@ const elements = {
   exportTasks: document.getElementById("exportTasks"),
   taskDialog: document.getElementById("taskDialog"),
   dialogForm: document.getElementById("dialogForm"),
+  taskDialogStatus: document.querySelector("[data-task-status]"),
+  taskDialogToggle: document.querySelector('[data-action="toggle-task-completion"]'),
   dialogAttachmentsInput: document.querySelector('#dialogForm input[name="attachments"]'),
   dialogAttachmentList: document.querySelector('#dialogForm [data-dialog-attachment-list]'),
   taskTemplate: document.getElementById("taskItemTemplate"),
@@ -262,6 +287,11 @@ const elements = {
   companyForm: document.getElementById("companyForm"),
   companyNameInput: document.getElementById("companyName"),
   companyError: document.querySelector("[data-company-error]"),
+  projectDialog: document.getElementById("projectDialog"),
+  projectForm: document.getElementById("projectForm"),
+  projectNameInput: document.querySelector('#projectForm input[name="projectName"]'),
+  projectCompanySelect: document.querySelector('#projectForm select[name="projectCompany"]'),
+  projectError: document.querySelector("[data-project-error]"),
   userguideList: document.getElementById("userguideList"),
   userguideForm: document.getElementById("userguideForm"),
   userguideEditor: document.getElementById("userguideEditor"),
@@ -369,6 +399,13 @@ const applyStoredPreferences = () => {
   }
   if (prefs.textareaHeights && typeof prefs.textareaHeights === "object") {
     state.textareaHeights = { ...prefs.textareaHeights };
+  }
+  if (state.textareaHeights) {
+    AUTOSIZE_RESET_KEYS.forEach((key) => {
+      if (key in state.textareaHeights) {
+        delete state.textareaHeights[key];
+      }
+    });
   }
 
   if (state.viewMode === "board" && state.activeView.type !== "project") {
@@ -518,6 +555,25 @@ const upgradeUserguideIfLegacy = () => {
     saveUserguide();
   } else {
     pendingUserguideUpgrade = true;
+  }
+};
+
+const ensureUserguideHasLatestEntries = () => {
+  if (!Array.isArray(state.userguide)) return;
+  let mutated = false;
+  USERGUIDE_LATEST_ENTRIES.forEach((entry) => {
+    if (!state.userguide.some((line) => line.trim() === entry.trim())) {
+      state.userguide.push(entry);
+      mutated = true;
+    }
+  });
+  if (mutated) {
+    saveJSON(STORAGE_KEYS.userguide, state.userguide);
+    if (remoteLoaded) {
+      saveUserguide();
+    } else {
+      pendingUserguideUpgrade = true;
+    }
   }
 };
 
@@ -696,6 +752,7 @@ const applyRemoteState = (data) => {
     whatsapp: { ...(incomingImports?.whatsapp ?? {}) },
   };
   upgradeUserguideIfLegacy();
+  ensureUserguideHasLatestEntries();
 
   ensureDefaultCompany();
   ensureDefaultProject();
@@ -888,6 +945,83 @@ const describeDueDate = (dueDate) => {
     day: "numeric",
   }).format(date);
   return { label: formatted, className: "meta-chip" };
+};
+
+const getTaskDescriptionText = (task) => {
+  if (typeof task.description === "string" && task.description.trim()) {
+    return task.description.trim();
+  }
+  if (typeof task.metadata?.notes === "string" && task.metadata.notes.trim()) {
+    return task.metadata.notes.trim();
+  }
+  if (task.kind === "meeting" && typeof task.metadata?.attendees === "string") {
+    const attendees = task.metadata.attendees.trim();
+    if (attendees) {
+      return `Attendees: ${attendees}`;
+    }
+  }
+  return "";
+};
+
+const buildPreviewFromText = (text, lines = 3) => {
+  if (!text) return "";
+  const segments = text
+    .split(/\r?\n/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  if (!segments.length) return "";
+  return segments.slice(0, lines).join("\n");
+};
+
+const describeTaskPreview = (task) => {
+  const preview = buildPreviewFromText(getTaskDescriptionText(task));
+  return preview || "No notes yet.";
+};
+
+const describeTaskAssignee = (task) => {
+  const member = getMemberById(task.assigneeId);
+  return member ? `Assignee: ${member.name}` : "Assignee: Unassigned";
+};
+
+const describeTaskActionItems = (task) => {
+  const items = Array.isArray(task.metadata?.actionItems) ? task.metadata.actionItems : [];
+  if (!items.length) return "Action items: none";
+  const remaining = items.filter((item) => !item?.completed).length;
+  if (remaining === 0) {
+    return `Action items: ${items.length} complete`;
+  }
+  return `Action items: ${remaining}/${items.length} open`;
+};
+
+const describeTaskDueLabel = (task) => {
+  const { label } = describeDueDate(task.dueDate);
+  return label ? `Due ${label}` : "No due date";
+};
+
+const describeTaskCompletionStatus = (task) => {
+  if (!task.completed) return "In progress";
+  if (!task.completedAt) return "Completed";
+  const completedDate = new Date(task.completedAt);
+  if (Number.isNaN(completedDate.getTime())) return "Completed";
+  const formatted = new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: completedDate.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined,
+  }).format(completedDate);
+  return `Completed ${formatted}`;
+};
+
+const updateTaskDialogCompletionState = (task) => {
+  if (!elements.taskDialogToggle) return;
+  const completed = Boolean(task.completed);
+  elements.taskDialogToggle.textContent = completed ? "Restore task" : "Mark completed";
+  elements.taskDialogToggle.dataset.completedState = completed ? "true" : "false";
+  if (elements.taskDialogStatus) {
+    elements.taskDialogStatus.textContent = describeTaskCompletionStatus(task);
+  }
+  if (elements.dialogForm?.elements?.completed) {
+    elements.dialogForm.elements.completed.checked = completed;
+  }
 };
 
 const compareTasks = (a, b) => {
@@ -1289,6 +1423,20 @@ const populateProjectOptions = () => {
   });
 };
 
+const populateProjectCompanyOptions = (select, selectedId) => {
+  if (!select) return;
+  const fragment = document.createDocumentFragment();
+  state.companies.forEach((company) => {
+    const option = document.createElement("option");
+    option.value = company.id;
+    option.textContent = company.name;
+    option.disabled = Boolean(company.isDefault && state.companies.length === 1);
+    fragment.append(option);
+  });
+  select.replaceChildren(fragment);
+  select.value = selectedId && getCompanyById(selectedId) ? selectedId : DEFAULT_COMPANY.id;
+};
+
 const populateSectionOptions = (select, projectId, preferredValue) => {
   if (!select) return;
   const sections = getSectionsForProject(projectId);
@@ -1480,160 +1628,31 @@ const pushMetaChip = (container, text, className = "meta-chip") => {
   container.append(chip);
 };
 
-const buildMeta = (task, container) => {
-  container.textContent = "";
-
-  const due = describeDueDate(task.dueDate);
-  if (due.label) pushMetaChip(container, due.label, due.className || "meta-chip");
-
-  if (task.createdAt) {
-    const createdDate = new Date(task.createdAt);
-    if (!Number.isNaN(createdDate.getTime())) {
-      const createdLabel = new Intl.DateTimeFormat(undefined, {
-        month: "short",
-        day: "numeric",
-        year: createdDate.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined,
-      }).format(createdDate);
-      pushMetaChip(container, `Created ${createdLabel}`, "meta-chip subtle");
-    }
-  }
-  if (task.deletedAt) {
-    const deletedDate = new Date(task.deletedAt);
-    if (!Number.isNaN(deletedDate.getTime())) {
-      const deletedLabel = new Intl.DateTimeFormat(undefined, {
-        month: "short",
-        day: "numeric",
-        year: deletedDate.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined,
-      }).format(deletedDate);
-      pushMetaChip(container, `Deleted ${deletedLabel}`, "meta-chip danger");
-    }
-  }
-
-  const section = getSectionById(task.sectionId);
-  if (section && !(state.viewMode === "board" && state.activeView.type === "project")) {
-    pushMetaChip(container, section.name);
-  }
-  const priorityLabel = PRIORITY_LABELS[task.priority];
-  if (priorityLabel && task.priority !== "medium") {
-    pushMetaChip(container, priorityLabel);
-  }
-
-  if (shouldShowProjectChip(task)) {
-    const project = getProjectById(task.projectId);
-    pushMetaChip(container, project ? project.name : "Unknown project");
-  }
-
-  const member = getMemberById(task.assigneeId);
-  if (member) pushMetaChip(container, member.name);
-
-  const department = getDepartmentById(task.departmentId);
-  if (department && !department.isDefault) pushMetaChip(container, department.name);
-
-  if ((task.source ?? "") === "whatsapp") {
-    pushMetaChip(container, "WhatsApp import");
-  }
-
-  if ((task.kind ?? "task") === "meeting") {
-    const meetingType = task.metadata?.meetingType;
-    const attendees = task.metadata?.attendees;
-    const actionItems = Array.isArray(task.metadata?.actionItems)
-      ? task.metadata.actionItems
-      : [];
-    if (meetingType) pushMetaChip(container, `Meeting: ${meetingType}`);
-    if (attendees) pushMetaChip(container, `Attendees: ${attendees}`);
-    if (actionItems.length) {
-      const remaining = actionItems.filter((item) => !item?.completed).length;
-      const label = remaining
-        ? `${remaining}/${actionItems.length} action items`
-        : `${actionItems.length} action items`;
-      pushMetaChip(container, label);
-    }
-  } else if ((task.kind ?? "task") === "email") {
-    const emailAddress = task.metadata?.emailAddress;
-    const status = task.metadata?.status;
-    if (emailAddress) pushMetaChip(container, emailAddress);
-    if (status) pushMetaChip(container, `Status: ${status}`);
-  }
-
-  if (Array.isArray(task.links) && task.links.length) {
-    pushMetaChip(
-      container,
-      `${task.links.length} link${task.links.length === 1 ? "" : "s"}`
-    );
-  }
-
-  const archivedFrom = task.metadata?.archivedFrom;
-  if (archivedFrom?.projectName) {
-    const archivedLabel = archivedFrom.companyName
-      ? `From: ${archivedFrom.projectName} (${archivedFrom.companyName})`
-      : `From: ${archivedFrom.projectName}`;
-    pushMetaChip(container, archivedLabel);
-  }
-
-  if (task.description) pushMetaChip(container, "Notes");
-};
-
 const renderTaskItem = (task) => {
   const fragment = elements.taskTemplate.content.cloneNode(true);
   const item = fragment.querySelector(".task-item");
-  const checkbox = fragment.querySelector('input[type="checkbox"]');
   const titleEl = fragment.querySelector(".task-title");
-  const metaEl = fragment.querySelector(".task-meta");
-  const contentEl = fragment.querySelector(".task-content");
-  const completeBtn = fragment.querySelector('[data-action="complete"]');
+  const previewEl = fragment.querySelector(".task-preview");
+  const assigneeEl = fragment.querySelector(".task-meta-assignee");
+  const actionEl = fragment.querySelector(".task-meta-actions");
+  const dueEl = fragment.querySelector(".task-meta-due");
+  const editBtn = fragment.querySelector('[data-action="edit"]');
 
   item.dataset.taskId = task.id;
-  item.dataset.priority = task.priority;
+  item.dataset.priority = task.priority ?? "medium";
   titleEl.textContent = task.title;
-  titleEl.title = task.description ?? "";
-  checkbox.checked = task.completed;
-  item.classList.toggle("completed", task.completed);
-  if (task.deletedAt) {
-    item.classList.add("deleted");
-    checkbox.disabled = true;
-    if (completeBtn) completeBtn.disabled = true;
-  } else {
-    checkbox.disabled = false;
-    item.classList.remove("deleted");
-    if (completeBtn) {
-      completeBtn.disabled = false;
-      completeBtn.textContent = task.completed ? "Mark active" : "Mark completed";
-      completeBtn.dataset.completedState = task.completed ? "true" : "false";
-    }
-  }
+  titleEl.title = task.title;
+  previewEl.textContent = describeTaskPreview(task);
+  assigneeEl.textContent = describeTaskAssignee(task);
+  actionEl.textContent = describeTaskActionItems(task);
+  dueEl.textContent = describeTaskDueLabel(task);
 
-  buildMeta(task, metaEl);
+  item.classList.toggle("completed", Boolean(task.completed));
+  item.classList.toggle("deleted", Boolean(task.deletedAt));
 
-  if (Array.isArray(task.attachments) && task.attachments.length && contentEl) {
-    const row = document.createElement("div");
-    row.className = "attachments-row";
-    task.attachments.forEach((attachment) => {
-      row.append(createAttachmentChip(attachment));
-    });
-    contentEl.append(row);
-  }
-
-  if (Array.isArray(task.links) && task.links.length && contentEl) {
-    const row = document.createElement("div");
-    row.className = "links-row";
-    task.links.forEach((link) => {
-      const title = link?.title?.trim() || link?.url?.trim() || "Link";
-      if (link?.url) {
-        const anchor = document.createElement("a");
-        anchor.href = link.url;
-        anchor.target = "_blank";
-        anchor.rel = "noopener";
-        anchor.className = "link-chip";
-        anchor.textContent = title;
-        row.append(anchor);
-      } else {
-        const span = document.createElement("span");
-        span.className = "link-chip disabled";
-        span.textContent = title;
-        row.append(span);
-      }
-    });
-    contentEl.append(row);
+  if (editBtn) {
+    editBtn.textContent = task.completed ? "View" : "Open";
+    editBtn.disabled = Boolean(task.deletedAt);
   }
 
   return item;
@@ -2496,7 +2515,7 @@ const autoResizeTextarea = (textarea) => {
 const clampTextareaHeight = (value) => Math.min(Math.max(value, 120), 720);
 
 const saveTextareaHeight = (key, height) => {
-  if (!key) return;
+  if (!key || AUTOSIZE_RESET_KEYS.has(key)) return;
   const value = clampTextareaHeight(height);
   if (!state.textareaHeights) {
     state.textareaHeights = {};
@@ -2512,7 +2531,9 @@ const applySavedTextareaHeight = (textarea) => {
   const defaultHeight = clampTextareaHeight(
     Number.parseInt(textarea.dataset.autosizeDefault ?? "180", 10)
   );
-  const stored = clampTextareaHeight(state.textareaHeights?.[key] ?? defaultHeight);
+  const stored = AUTOSIZE_RESET_KEYS.has(key)
+    ? defaultHeight
+    : clampTextareaHeight(state.textareaHeights?.[key] ?? defaultHeight);
   textarea.style.minHeight = `${defaultHeight}px`;
   textarea.style.height = `${stored}px`;
 };
@@ -2529,7 +2550,9 @@ const registerAutosizeTextarea = (textarea) => {
 
   const syncHeight = () => {
     if (!key) return;
-    const baseline = clampTextareaHeight(state.textareaHeights?.[key] ?? defaultHeight);
+    const baseline = AUTOSIZE_RESET_KEYS.has(key)
+      ? defaultHeight
+      : clampTextareaHeight(state.textareaHeights?.[key] ?? defaultHeight);
     textarea.style.height = "auto";
     const target = Math.max(baseline, textarea.scrollHeight);
     textarea.style.height = `${target}px`;
@@ -2537,7 +2560,7 @@ const registerAutosizeTextarea = (textarea) => {
   };
 
   const persistResize = () => {
-    if (!key) return;
+    if (!key || AUTOSIZE_RESET_KEYS.has(key)) return;
     saveTextareaHeight(key, textarea.offsetHeight);
   };
 
@@ -2956,9 +2979,9 @@ const deleteSection = (sectionId) => {
 
 const renameProject = (projectId, nextName) => {
   const project = getProjectById(projectId);
-  if (!project) return;
+  if (!project) return { success: false, error: "Project not found." };
   const trimmed = nextName.trim();
-  if (!trimmed) return;
+  if (!trimmed) return { success: false, error: "Project name is required." };
   const exists = state.projects.some(
     (entry) =>
       entry.id !== projectId &&
@@ -2966,8 +2989,7 @@ const renameProject = (projectId, nextName) => {
       entry.name.toLowerCase() === trimmed.toLowerCase(),
   );
   if (exists) {
-    window.alert("Another project in this company already uses that name.");
-    return;
+    return { success: false, error: "Another project in this company already uses that name." };
   }
   project.name = trimmed;
   project.updatedAt = new Date().toISOString();
@@ -2975,6 +2997,43 @@ const renameProject = (projectId, nextName) => {
   renderProjectDropdown();
   renderHeader();
   renderTasks();
+  return { success: true };
+};
+
+const moveProjectToCompany = (projectId, targetCompanyId) => {
+  const project = getProjectById(projectId);
+  if (!project) return { success: false, error: "Project not found." };
+  const company = getCompanyById(targetCompanyId) ?? getCompanyById(DEFAULT_COMPANY.id);
+  if (!company) return { success: false, error: "Target company not found." };
+  if (project.companyId === company.id) {
+    return { success: true, changed: false };
+  }
+
+  const now = new Date().toISOString();
+  const previousCompanyId = project.companyId;
+  project.companyId = company.id;
+  project.updatedAt = now;
+  state.tasks = state.tasks.map((task) => {
+    if (task.projectId !== projectId) return task;
+    return { ...task, companyId: company.id, updatedAt: now };
+  });
+
+  Object.keys(state.companyRecents).forEach((companyId) => {
+    if (state.companyRecents[companyId] === projectId && companyId !== company.id) {
+      delete state.companyRecents[companyId];
+    }
+  });
+  state.companyRecents[company.id] = projectId;
+
+  saveProjects();
+  saveTasks();
+  ensureCompanyPreferences();
+  renderProjectDropdown();
+  renderCompanyTabs();
+  renderHeader();
+  renderTasks();
+
+  return { success: true, changed: previousCompanyId !== company.id };
 };
 
 const deleteProject = (projectId) => {
@@ -3035,8 +3094,127 @@ const deleteProject = (projectId) => {
     savePreferences();
     render();
   }
+  setActiveCompany(ALL_COMPANY_ID);
   return true;
 };
+
+const openProjectDialog = (projectId) => {
+  if (!elements.projectDialog || !elements.projectForm) return;
+  const project = getProjectById(projectId);
+  if (!project) return;
+  state.editingProjectId = projectId;
+
+  if (elements.projectNameInput) {
+    elements.projectNameInput.value = project.name;
+  }
+  populateProjectCompanyOptions(elements.projectCompanySelect, project.companyId);
+  if (elements.projectError) {
+    elements.projectError.textContent = "";
+  }
+  const deleteButton = elements.projectDialog.querySelector('[data-action="delete-project"]');
+  if (deleteButton) {
+    deleteButton.hidden = Boolean(project.isDefault);
+    deleteButton.disabled = Boolean(project.isDefault);
+  }
+
+  if (typeof elements.projectDialog.showModal === "function") {
+    elements.projectDialog.showModal();
+  } else {
+    elements.projectDialog.setAttribute("open", "true");
+  }
+};
+
+const closeProjectDialog = () => {
+  state.editingProjectId = null;
+  if (elements.projectForm) {
+    elements.projectForm.reset();
+  }
+  if (elements.projectError) {
+    elements.projectError.textContent = "";
+  }
+  if (elements.projectDialog) {
+    if (typeof elements.projectDialog.close === "function") {
+      elements.projectDialog.close();
+    } else {
+      elements.projectDialog.removeAttribute("open");
+    }
+  }
+};
+
+const handleProjectFormSubmit = (event) => {
+  event.preventDefault();
+  if (!state.editingProjectId) return;
+  const project = getProjectById(state.editingProjectId);
+  if (!project) {
+    if (elements.projectError) elements.projectError.textContent = "Project not found.";
+    return;
+  }
+
+  const nextName = elements.projectNameInput?.value ?? "";
+  const targetCompanyId = elements.projectCompanySelect?.value || DEFAULT_COMPANY.id;
+  const errors = [];
+  let changed = false;
+
+  if (targetCompanyId !== project.companyId) {
+    const moveResult = moveProjectToCompany(project.id, targetCompanyId);
+    if (!moveResult.success) {
+      errors.push(moveResult.error);
+    } else {
+      changed = moveResult.changed || changed;
+    }
+  }
+
+  if (nextName.trim() && nextName.trim() !== project.name) {
+    const renameResult = renameProject(project.id, nextName);
+    if (!renameResult.success) {
+      errors.push(renameResult.error);
+    } else {
+      changed = true;
+    }
+  }
+
+  if (!nextName.trim()) {
+    errors.push("Project name is required.");
+  }
+
+  if (errors.length) {
+    if (elements.projectError) elements.projectError.textContent = errors.join(" ");
+    return;
+  }
+
+  if (!changed) {
+    if (elements.projectError) elements.projectError.textContent = "No changes to save.";
+    return;
+  }
+
+  const updated = getProjectById(project.id);
+  if (updated) {
+    setActiveView("project", updated.id);
+  }
+  closeProjectDialog();
+};
+
+const handleProjectFormClick = (event) => {
+  const action = event.target.dataset.action;
+  if (action === "close-project") {
+    closeProjectDialog();
+    event.preventDefault();
+    return;
+  }
+  if (action === "delete-project" && state.editingProjectId) {
+    event.preventDefault();
+    const project = getProjectById(state.editingProjectId);
+    if (!project) return;
+    const confirmed = window.confirm(
+      `Delete the project "${project.name}"? All tasks will be moved to the workspace inbox.`,
+    );
+    if (confirmed) {
+      deleteProject(project.id);
+      closeProjectDialog();
+    }
+  }
+};
+
 
 const createCompany = (name) => {
   const trimmed = name.trim();
@@ -3134,6 +3312,7 @@ const deleteCompany = (companyId) => {
     savePreferences();
     render();
   }
+  setActiveCompany(ALL_COMPANY_ID);
   return true;
 };
 
@@ -3319,13 +3498,6 @@ const handleViewClick = (event) => {
   setActiveView("view", button.dataset.view);
 };
 
-const handleTaskCheckboxChange = (event) => {
-  if (event.target.type !== "checkbox") return;
-  const item = event.target.closest(".task-item");
-  if (!item) return;
-  updateTask(item.dataset.taskId, { completed: event.target.checked });
-};
-
 const openTaskEditor = (task) => {
   if (!task) return;
   const kind = task.kind ?? "task";
@@ -3355,20 +3527,18 @@ const handleTaskActionClick = (event) => {
     }
     return;
   }
-  const item = button.closest(".task-item");
-  if (!item) return;
-  const taskId = item.dataset.taskId;
-  const task = state.tasks.find((entry) => entry.id === taskId);
-  if (!task) return;
-
-  if (action === "complete") {
-    updateTask(taskId, { completed: !task.completed });
-    return;
-  }
   if (action === "edit") {
+    const item = button.closest(".task-item");
+    if (!item) return;
+    const task = state.tasks.find((entry) => entry.id === item.dataset.taskId);
+    if (!task) return;
     openTaskEditor(task);
     return;
-  } else if (action === "delete") {
+  }
+  if (action === "delete") {
+    const item = button.closest(".task-item");
+    if (!item) return;
+    const taskId = item.dataset.taskId;
     const confirmed = window.confirm("Delete this task? This cannot be undone.");
     if (confirmed) {
       removeTask(taskId);
@@ -3930,6 +4100,8 @@ const openTaskDialog = (taskId) => {
     elements.dialogAttachmentsInput.value = "";
   }
 
+  updateTaskDialogCompletionState(task);
+
   if (typeof elements.taskDialog.showModal === "function") {
     elements.taskDialog.showModal();
   } else {
@@ -3948,6 +4120,13 @@ const closeTaskDialog = () => {
   }
   if (elements.dialogForm?.elements?.description) {
     applySavedTextareaHeight(elements.dialogForm.elements.description);
+  }
+  if (elements.taskDialogStatus) {
+    elements.taskDialogStatus.textContent = "";
+  }
+  if (elements.taskDialogToggle) {
+    elements.taskDialogToggle.dataset.completedState = "";
+    elements.taskDialogToggle.textContent = "Mark completed";
   }
   if (typeof elements.taskDialog.close === "function") {
     elements.taskDialog.close();
@@ -4032,6 +4211,14 @@ const handleDialogClick = (event) => {
   const action = event.target.dataset.action;
   if (action === "close") {
     closeTaskDialog();
+  } else if (action === "toggle-task-completion" && state.editingTaskId) {
+    const current = state.tasks.find((entry) => entry.id === state.editingTaskId);
+    if (!current || current.deletedAt) return;
+    const updated = updateTask(state.editingTaskId, { completed: !current.completed });
+    if (updated) {
+      updateTaskDialogCompletionState(updated);
+      focusTaskRow(updated.id);
+    }
   } else if (action === "delete" && state.editingTaskId) {
     const confirmed = window.confirm("Delete this task? This cannot be undone.");
     if (confirmed) {
@@ -4277,19 +4464,7 @@ const handleActivityClick = (event) => {
 };
 
 const openProjectEditor = (projectId) => {
-  const project = getProjectById(projectId);
-  if (!project) return;
-  const nextName = window.prompt("Rename project", project.name);
-  if (nextName && nextName.trim() && nextName.trim() !== project.name) {
-    renameProject(project.id, nextName);
-  }
-  if (project.isDefault) return;
-  const confirmDelete = window.confirm(
-    `Delete the project "${project.name}"? All sections and tasks inside will be removed.`
-  );
-  if (confirmDelete) {
-    deleteProject(project.id);
-  }
+  openProjectDialog(projectId);
 };
 
 const openSectionEditor = (sectionId) => {
@@ -5441,6 +5616,7 @@ const hydrateStateFromLocal = () => {
     whatsapp: { ...(storedImports?.whatsapp ?? {}) },
   };
   upgradeUserguideIfLegacy();
+  ensureUserguideHasLatestEntries();
 
   ensureDefaultCompany();
   ensureDefaultProject();
@@ -5475,6 +5651,12 @@ const registerEventListeners = () => {
   elements.companyDialog?.addEventListener("cancel", (event) => {
     event.preventDefault();
     closeCompanyDialog();
+  });
+  elements.projectForm?.addEventListener("submit", handleProjectFormSubmit);
+  elements.projectForm?.addEventListener("click", handleProjectFormClick);
+  elements.projectDialog?.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeProjectDialog();
   });
   elements.meetingForm?.addEventListener("submit", handleMeetingFormSubmit);
   elements.meetingForm?.addEventListener("click", handleMeetingFormClick);
@@ -5514,7 +5696,6 @@ const registerEventListeners = () => {
     closeWhatsappDialog();
   });
 
-  elements.taskTabPanels?.addEventListener("change", handleTaskCheckboxChange);
   elements.taskTabPanels?.addEventListener("click", handleTaskItemOpen);
   elements.taskTabPanels?.addEventListener("click", handleTaskActionClick);
 
