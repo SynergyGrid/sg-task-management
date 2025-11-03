@@ -84,26 +84,38 @@ const PRIORITY_LABELS = {
   optional: "Optional priority",
 };
 const DEFAULT_USERGUIDE = [
-  "## Navigating the workspace",
-  "- Open Workspace to triage unscheduled work across the selected company.",
-  "- Use Due Today and Upcoming 7 Days to keep deadlines visible.",
-  "- Switch companies from the selector above the project dropdown to scope the board.",
-  "## Working inside projects",
-  "- Every project opens with Regular Tasks, WhatsApp Tasks, Meetings and Emails.",
-  "- Each section surfaces the latest five items. Drag the bottom edge or use See more to review the rest.",
-  "- Board view is still available when you need the original sections and drag-and-drop.",
-  "## Logging meetings",
-  "- Use the Meeting action in the project menu to record session details, attendees and supporting links.",
-  "- Meeting entries stay grouped under the project overview and can be edited from the same list.",
-  "## Tracking emails",
-  "- Use the Email action to capture key threads, their status and reference links.",
-  "- Email items surface in the project overview so follow-ups never drift.",
-  "## Search and activity",
-  "- The search bar now provides live suggestions - select any result to jump straight to the task.",
-  "- Recent activity lists the latest updates; use Show more to extend the feed when reviewing history.",
-  "## Team administration",
-  "- Manage companies, members and departments from Settings so assignments stay accurate.",
-  "- Deleting a company or project preserves its tasks under Workspace so nothing is lost.",
+  "## Workspace overview",
+  "### Tabs and scope",
+  "- Workspace lists unscheduled tasks for the active company.",
+  "- Due Today and Upcoming 7 Days highlight urgent work and update their counters automatically.",
+  "- Switch companies from the pill strip; use the three-dot menu on each pill to rename or archive a company safely.",
+  "### Projects",
+  "- Pick a project from the dropdown to review its overview cards (Regular Tasks, WhatsApp Tasks, Meetings, Emails).",
+  "- Use the Meeting and Email quick actions beside a project to open the respective creation dialogs instantly.",
+  "- Select See more inside any card to expand beyond the latest five records.",
+  "## Capturing work",
+  "### Tasks",
+  "- Click Add Task for a quick capture or open any task row to edit the full detail dialog.",
+  "- Descriptions open with generous space, remember the height you last set, and remain vertically resizable.",
+  "- Every task row includes a Mark completed button; completed rows can be re-opened in one click.",
+  "### Meetings",
+  "- Use the Meeting quick action to log attendees, meeting type, links, notes and follow-up items.",
+  "- Action items appear as an interactive checklist. Paste multiple lines to create a list automatically and tick entries off as work lands.",
+  "- Meetings surface under the project overview so you can monitor follow-ups without leaving the overview tab.",
+  "### Emails",
+  "- The Email quick action tracks important threads with status, notes and supporting links.",
+  "- Notes resize with the content and remember the height you prefer for long summaries.",
+  "## Finding context",
+  "- The global search provides live suggestions; selecting a result jumps to the correct company/project and opens the task dialog.",
+  "- All Activity now includes Created, Updated, Completed and Deleted tabs for a richer audit trail.",
+  "- Click anywhere on a task (outside of buttons) to open its detail dialog, no need to hunt for the Edit button.",
+  "## Administration and exports",
+  "- Manage members and departments from Settings so assignments and filters stay accurate across the workspace.",
+  "- Use the Workspace export button in Settings to download tasks, projects, sections, companies, members, departments and the userguide as JSON.",
+  "- Deleting a project or company preserves its tasks by moving them into Workspace under the default company.",
+  "## Maintaining this guide",
+  "- Update the userguide whenever processes change. Headings (`##`, `###`), bullet lists (`- item`) and numbered steps (`1.`) are supported.",
+  "- Keep entries concise but complete so teammates can follow the latest workflow without additional training.",
 ];
 
 const LEGACY_USERGUIDE_V1 = [
@@ -145,6 +157,8 @@ const state = {
   editingCompanyId: null,
   editingMeetingId: null,
   editingEmailId: null,
+  meetingActionDraft: [],
+  textareaHeights: {},
   dragTaskId: null,
   dragSectionId: null,
   sectionDropTarget: null,
@@ -234,6 +248,8 @@ const elements = {
   meetingPriority: document.querySelector('#meetingForm select[name="priority"]'),
   meetingLinksList: document.querySelector("[data-meeting-links]"),
   meetingError: document.querySelector("[data-meeting-error]"),
+  meetingActionList: document.querySelector("[data-meeting-action-list]"),
+  meetingActionInput: document.querySelector("[data-meeting-action-input]"),
   emailDialog: document.getElementById("emailDialog"),
   emailForm: document.getElementById("emailForm"),
   emailProjectLabel: document.querySelector("[data-email-project]"),
@@ -325,6 +341,7 @@ const savePreferences = () =>
     activeTaskTab: state.activeTaskTab,
     activeAllTab: state.activeAllTab,
     metricsFilter: state.metricsFilter,
+    textareaHeights: state.textareaHeights,
   });
 
 const applyStoredPreferences = () => {
@@ -349,6 +366,9 @@ const applyStoredPreferences = () => {
   }
   if (typeof prefs.metricsFilter === "string") {
     state.metricsFilter = prefs.metricsFilter;
+  }
+  if (prefs.textareaHeights && typeof prefs.textareaHeights === "object") {
+    state.textareaHeights = { ...prefs.textareaHeights };
   }
 
   if (state.viewMode === "board" && state.activeView.type !== "project") {
@@ -831,6 +851,16 @@ const ensureTaskDefaults = (task) => {
     task.metadata = {};
   }
   task.links = normaliseTaskLinks(task.links);
+  const rawActionItems = Array.isArray(task.metadata.actionItems)
+    ? task.metadata.actionItems
+    : Array.isArray(task.actionItems)
+      ? task.actionItems
+      : [];
+  const actionItems = rawActionItems
+    .map((item) => normaliseActionItem(item))
+    .filter(Boolean);
+  task.metadata.actionItems = actionItems;
+  task.actionItems = actionItems;
 };
 const describeDueDate = (dueDate) => {
   if (!dueDate) return { label: "", className: "" };
@@ -1506,9 +1536,18 @@ const buildMeta = (task, container) => {
   if ((task.kind ?? "task") === "meeting") {
     const meetingType = task.metadata?.meetingType;
     const attendees = task.metadata?.attendees;
+    const actionItems = Array.isArray(task.metadata?.actionItems)
+      ? task.metadata.actionItems
+      : [];
     if (meetingType) pushMetaChip(container, `Meeting: ${meetingType}`);
     if (attendees) pushMetaChip(container, `Attendees: ${attendees}`);
-    if (task.metadata?.actionItems) pushMetaChip(container, "Action items");
+    if (actionItems.length) {
+      const remaining = actionItems.filter((item) => !item?.completed).length;
+      const label = remaining
+        ? `${remaining}/${actionItems.length} action items`
+        : `${actionItems.length} action items`;
+      pushMetaChip(container, label);
+    }
   } else if ((task.kind ?? "task") === "email") {
     const emailAddress = task.metadata?.emailAddress;
     const status = task.metadata?.status;
@@ -1541,6 +1580,7 @@ const renderTaskItem = (task) => {
   const titleEl = fragment.querySelector(".task-title");
   const metaEl = fragment.querySelector(".task-meta");
   const contentEl = fragment.querySelector(".task-content");
+  const completeBtn = fragment.querySelector('[data-action="complete"]');
 
   item.dataset.taskId = task.id;
   item.dataset.priority = task.priority;
@@ -1551,9 +1591,15 @@ const renderTaskItem = (task) => {
   if (task.deletedAt) {
     item.classList.add("deleted");
     checkbox.disabled = true;
+    if (completeBtn) completeBtn.disabled = true;
   } else {
     checkbox.disabled = false;
     item.classList.remove("deleted");
+    if (completeBtn) {
+      completeBtn.disabled = false;
+      completeBtn.textContent = task.completed ? "Mark active" : "Mark completed";
+      completeBtn.dataset.completedState = task.completed ? "true" : "false";
+    }
   }
 
   buildMeta(task, metaEl);
@@ -1820,6 +1866,7 @@ const renderAllTaskOverview = () => {
   const tabs = [
     { id: "created", label: "Created" },
     { id: "updated", label: "Updated" },
+    { id: "completed", label: "Completed" },
     { id: "deleted", label: "Deleted" },
   ];
   if (!tabs.some((tab) => tab.id === state.activeAllTab)) {
@@ -1843,10 +1890,18 @@ const renderAllTaskOverview = () => {
           new Date(b.updatedAt || b.createdAt).getTime() -
           new Date(a.updatedAt || a.createdAt).getTime()
       );
-  } else {
+  } else if (state.activeAllTab === "deleted") {
     scopedTasks = state.tasks
       .filter((task) => task.deletedAt && matchesSearch(task))
       .sort((a, b) => new Date(b.deletedAt ?? 0).getTime() - new Date(a.deletedAt ?? 0).getTime());
+  } else {
+    scopedTasks = state.tasks
+      .filter((task) => task.completed && matchesSearch(task))
+      .sort((a, b) => {
+        const aTime = new Date(a.completedAt || a.updatedAt || a.createdAt || 0).getTime();
+        const bTime = new Date(b.completedAt || b.updatedAt || b.createdAt || 0).getTime();
+        return bTime - aTime;
+      });
   }
 
   panel.append(
@@ -1854,7 +1909,9 @@ const renderAllTaskOverview = () => {
       scopedTasks,
       state.activeAllTab === "deleted"
         ? "No deleted tasks yet."
-        : "No tasks match this filter right now."
+        : state.activeAllTab === "completed"
+          ? "No completed tasks yet."
+          : "No tasks match this filter right now."
     )
   );
   elements.taskTabPanels.replaceChildren(panel);
@@ -2399,6 +2456,9 @@ const setActiveView = (type, value) => {
   if (state.viewMode === "board" && nextType !== "project") {
     state.viewMode = "list";
   }
+  if (state.isUserguideOpen) {
+    closeUserguide();
+  }
   savePreferences();
   render();
 };
@@ -2433,30 +2493,63 @@ const autoResizeTextarea = (textarea) => {
   textarea.style.height = `${textarea.scrollHeight}px`;
 };
 
-const attachTextareaAutosize = (textarea) => {
+const clampTextareaHeight = (value) => Math.min(Math.max(value, 120), 720);
+
+const saveTextareaHeight = (key, height) => {
+  if (!key) return;
+  const value = clampTextareaHeight(height);
+  if (!state.textareaHeights) {
+    state.textareaHeights = {};
+  }
+  if (state.textareaHeights[key] === value) return;
+  state.textareaHeights = { ...state.textareaHeights, [key]: value };
+  savePreferences();
+};
+
+const applySavedTextareaHeight = (textarea) => {
   if (!textarea) return;
-  autoResizeTextarea(textarea);
-  textarea.addEventListener("input", () => autoResizeTextarea(textarea));
+  const key = textarea.dataset.autosizeKey;
+  const defaultHeight = clampTextareaHeight(
+    Number.parseInt(textarea.dataset.autosizeDefault ?? "180", 10)
+  );
+  const stored = clampTextareaHeight(state.textareaHeights?.[key] ?? defaultHeight);
+  textarea.style.minHeight = `${defaultHeight}px`;
+  textarea.style.height = `${stored}px`;
+};
+
+const registerAutosizeTextarea = (textarea) => {
+  if (!textarea || textarea.dataset.autosizeReady === "true") return;
+  const key = textarea.dataset.autosizeKey;
+  const defaultHeight = clampTextareaHeight(
+    Number.parseInt(textarea.dataset.autosizeDefault ?? "180", 10)
+  );
+  applySavedTextareaHeight(textarea);
+  textarea.style.resize = "vertical";
+  textarea.dataset.autosizeReady = "true";
+
+  const syncHeight = () => {
+    if (!key) return;
+    const baseline = clampTextareaHeight(state.textareaHeights?.[key] ?? defaultHeight);
+    textarea.style.height = "auto";
+    const target = Math.max(baseline, textarea.scrollHeight);
+    textarea.style.height = `${target}px`;
+    saveTextareaHeight(key, target);
+  };
+
+  const persistResize = () => {
+    if (!key) return;
+    saveTextareaHeight(key, textarea.offsetHeight);
+  };
+
+  textarea.addEventListener("input", syncHeight);
+  textarea.addEventListener("mouseup", persistResize);
+  textarea.addEventListener("touchend", persistResize);
+  syncHeight();
 };
 
 const initialiseTextareaAutosize = () => {
-  const quickAddDescription = elements.quickAddForm?.elements?.description;
-  attachTextareaAutosize(quickAddDescription);
-
-  if (elements.dialogForm) {
-    attachTextareaAutosize(elements.dialogForm.elements.description);
-  }
-
-  const meetingForm = elements.meetingForm;
-  if (meetingForm) {
-    attachTextareaAutosize(meetingForm.elements.attendees);
-    attachTextareaAutosize(meetingForm.elements.notes);
-  }
-
-  const emailForm = elements.emailForm;
-  if (emailForm) {
-    attachTextareaAutosize(emailForm.elements.notes);
-  }
+  const textareas = document.querySelectorAll("[data-autosize-key]");
+  textareas.forEach((textarea) => registerAutosizeTextarea(textarea));
 };
 
 const createLinkRow = (list, link = {}) => {
@@ -2511,6 +2604,154 @@ const collectLinks = (list) => {
       return { title, url };
     })
     .filter((entry) => entry.title || entry.url);
+};
+
+const normaliseActionItem = (item) => {
+  if (!item) return null;
+  const title = typeof item.title === "string" ? item.title.trim() : "";
+  if (!title) return null;
+  const completed = Boolean(item.completed);
+  const id = item.id || generateId("action-item");
+  return { id, title, completed };
+};
+
+const commitMeetingActionDraft = () => {
+  const committed = (state.meetingActionDraft || [])
+    .map((item) => normaliseActionItem(item))
+    .filter(Boolean);
+  state.meetingActionDraft = committed;
+  return committed;
+};
+
+const setMeetingActionDraft = (items = []) => {
+  const normalised = items
+    .map((item) => normaliseActionItem(item))
+    .filter(Boolean);
+  state.meetingActionDraft = normalised;
+};
+
+const addMeetingActionItems = (labels = []) => {
+  const additions = (Array.isArray(labels) ? labels : [labels])
+    .map((label) => {
+      if (typeof label !== "string") return null;
+      const trimmed = label.trim();
+      if (!trimmed) return null;
+      return { id: generateId("action-item"), title: trimmed, completed: false };
+    })
+    .filter(Boolean);
+  if (!additions.length) return;
+  state.meetingActionDraft = [...(state.meetingActionDraft || []), ...additions];
+  renderMeetingActionItems();
+};
+
+const updateMeetingActionItem = (id, updates) => {
+  if (!id || !updates) return;
+  state.meetingActionDraft = (state.meetingActionDraft || []).map((item) => {
+    if (item.id !== id) return item;
+    const next = { ...item, ...updates };
+    return normaliseActionItem(next) ?? item;
+  });
+  renderMeetingActionItems();
+};
+
+const removeMeetingActionItem = (id) => {
+  if (!id) return;
+  state.meetingActionDraft = (state.meetingActionDraft || []).filter((item) => item.id !== id);
+  renderMeetingActionItems();
+};
+
+const renderMeetingActionItems = () => {
+  const list = elements.meetingActionList;
+  if (!list) return;
+  list.replaceChildren();
+  const items = state.meetingActionDraft || [];
+  if (!items.length) {
+    const empty = document.createElement("p");
+    empty.className = "action-items-empty";
+    empty.textContent = "No action items captured yet.";
+    list.append(empty);
+    return;
+  }
+  items.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "action-item-row";
+    row.dataset.actionItemId = item.id;
+    if (item.completed) {
+      row.classList.add("completed");
+    }
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "action-item-checkbox";
+    checkbox.checked = item.completed;
+    checkbox.dataset.action = "meeting-toggle-action";
+    checkbox.dataset.actionItemId = item.id;
+
+    const textInput = document.createElement("input");
+    textInput.type = "text";
+    textInput.className = "field-input action-item-input";
+    textInput.value = item.title;
+    textInput.placeholder = "Describe the action item";
+    textInput.dataset.actionItemId = item.id;
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "ghost-button small";
+    removeBtn.dataset.action = "meeting-remove-action";
+    removeBtn.dataset.actionItemId = item.id;
+    removeBtn.textContent = "Remove";
+
+    row.append(checkbox, textInput, removeBtn);
+    list.append(row);
+  });
+};
+
+const handleMeetingActionListChange = (event) => {
+  const checkbox = event.target.closest(".action-item-checkbox");
+  if (!checkbox) return;
+  const id = checkbox.dataset.actionItemId;
+  updateMeetingActionItem(id, { completed: checkbox.checked });
+};
+
+const handleMeetingActionListInput = (event) => {
+  const input = event.target.closest(".action-item-input");
+  if (!input) return;
+  const id = input.dataset.actionItemId;
+  state.meetingActionDraft = (state.meetingActionDraft || []).map((item) => {
+    if (item.id !== id) return item;
+    return { ...item, title: input.value };
+  });
+};
+
+const handleMeetingActionInputKeydown = (event) => {
+  if (event.key !== "Enter") return;
+  const input = event.target.closest("[data-meeting-action-input]");
+  if (!input) return;
+  event.preventDefault();
+  const value = input.value.trim();
+  if (!value) return;
+  addMeetingActionItems(
+    value
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+  );
+  input.value = "";
+};
+
+const handleMeetingActionInputPaste = (event) => {
+  const input = event.target.closest("[data-meeting-action-input]");
+  if (!input) return;
+  const text = event.clipboardData?.getData("text");
+  if (!text) return;
+  event.preventDefault();
+  const items = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!items.length) return;
+  addMeetingActionItems(items);
+  input.value = "";
 };
 
 const addTask = (payload) => {
@@ -3085,6 +3326,20 @@ const handleTaskCheckboxChange = (event) => {
   updateTask(item.dataset.taskId, { completed: event.target.checked });
 };
 
+const openTaskEditor = (task) => {
+  if (!task) return;
+  const kind = task.kind ?? "task";
+  if (kind === "meeting") {
+    openMeetingDialog(task.projectId, task);
+    return;
+  }
+  if (kind === "email") {
+    openEmailDialog(task.projectId, task);
+    return;
+  }
+  openTaskDialog(task.id);
+};
+
 const handleTaskActionClick = (event) => {
   const button = event.target.closest("[data-action]");
   if (!button) return;
@@ -3106,23 +3361,38 @@ const handleTaskActionClick = (event) => {
   const task = state.tasks.find((entry) => entry.id === taskId);
   if (!task) return;
 
+  if (action === "complete") {
+    updateTask(taskId, { completed: !task.completed });
+    return;
+  }
   if (action === "edit") {
-    const kind = task.kind ?? "task";
-    if (kind === "meeting") {
-      openMeetingDialog(task.projectId, task);
-      return;
-    }
-    if (kind === "email") {
-      openEmailDialog(task.projectId, task);
-      return;
-    }
-    openTaskDialog(taskId);
+    openTaskEditor(task);
+    return;
   } else if (action === "delete") {
     const confirmed = window.confirm("Delete this task? This cannot be undone.");
     if (confirmed) {
       removeTask(taskId);
     }
   }
+};
+
+const handleTaskItemOpen = (event) => {
+  if (state.viewMode !== "list") return;
+  const item = event.target.closest(".task-item");
+  if (!item) return;
+  if (
+    event.target.closest(".task-actions") ||
+    event.target.closest(".task-checkbox") ||
+    event.target.closest("[data-action]") ||
+    event.target.closest("button") ||
+    event.target.closest("input") ||
+    event.target.closest("a")
+  ) {
+    return;
+  }
+  const task = state.tasks.find((entry) => entry.id === item.dataset.taskId);
+  if (!task || task.deletedAt) return;
+  openTaskEditor(task);
 };
 
 const prepareMeetingDialog = (projectId, task = null) => {
@@ -3143,15 +3413,24 @@ const prepareMeetingDialog = (projectId, task = null) => {
   form.elements.date.value = task?.dueDate ?? "";
   form.elements.meetingType.value = task?.metadata?.meetingType ?? "";
   form.elements.attendees.value = task?.metadata?.attendees ?? "";
-  form.elements.actionItems.checked = Boolean(task?.metadata?.actionItems);
   form.elements.title.value = task?.title ?? "";
   if (form.elements.notes) {
     form.elements.notes.value = task?.description ?? "";
   }
+  const actionItems = Array.isArray(task?.metadata?.actionItems)
+    ? task.metadata.actionItems
+    : [];
+  setMeetingActionDraft(actionItems);
+  renderMeetingActionItems();
+  if (elements.meetingActionInput) {
+    elements.meetingActionInput.value = "";
+  }
   resetLinkList(elements.meetingLinksList, Array.isArray(task?.links) ? task.links : []);
   if (elements.meetingError) elements.meetingError.textContent = "";
-  autoResizeTextarea(form.elements.attendees);
-  autoResizeTextarea(form.elements.notes);
+  registerAutosizeTextarea(form.elements.attendees);
+  registerAutosizeTextarea(form.elements.notes);
+  form.elements.attendees?.dispatchEvent(new Event("input", { bubbles: false }));
+  form.elements.notes?.dispatchEvent(new Event("input", { bubbles: false }));
 };
 
 const openMeetingDialog = (projectId, task = null) => {
@@ -3173,7 +3452,14 @@ const closeMeetingDialog = () => {
   if (form) {
     form.reset();
     resetLinkList(elements.meetingLinksList);
+    setMeetingActionDraft([]);
+    renderMeetingActionItems();
     if (elements.meetingError) elements.meetingError.textContent = "";
+    applySavedTextareaHeight(form.elements.attendees);
+    applySavedTextareaHeight(form.elements.notes);
+  }
+  if (elements.meetingActionInput) {
+    elements.meetingActionInput.value = "";
   }
   if (dialog) {
     if (typeof dialog.close === "function") dialog.close();
@@ -3203,7 +3489,8 @@ const handleMeetingFormSubmit = (event) => {
   const metadata = existing?.metadata && typeof existing.metadata === "object" ? { ...existing.metadata } : {};
   metadata.meetingType = form.elements.meetingType.value;
   metadata.attendees = form.elements.attendees.value.trim();
-  metadata.actionItems = form.elements.actionItems.checked;
+  const actionItems = commitMeetingActionDraft();
+  metadata.actionItems = actionItems;
   metadata.links = links;
 
   const payload = {
@@ -3218,6 +3505,7 @@ const handleMeetingFormSubmit = (event) => {
     source: existing?.source ?? "manual",
     metadata,
     links,
+    actionItems,
   };
 
   if (state.editingMeetingId && existing) {
@@ -3243,6 +3531,28 @@ const handleMeetingFormClick = (event) => {
     if (elements.meetingLinksList && elements.meetingLinksList.childElementCount === 0) {
       createLinkRow(elements.meetingLinksList);
     }
+    return;
+  }
+  if (action === "meeting-add-action") {
+    event.preventDefault();
+    const input = elements.meetingActionInput;
+    if (!input) return;
+    const value = input.value.trim();
+    if (!value) return;
+    addMeetingActionItems(
+      value
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+    );
+    input.value = "";
+    input.focus();
+    return;
+  }
+  if (action === "meeting-remove-action") {
+    event.preventDefault();
+    const id = event.target.dataset.actionItemId;
+    removeMeetingActionItem(id);
     return;
   }
   if (action === "close-meeting") {
@@ -3277,7 +3587,8 @@ const prepareEmailDialog = (projectId, task = null) => {
   }
   resetLinkList(elements.emailLinksList, Array.isArray(task?.links) ? task.links : []);
   if (elements.emailError) elements.emailError.textContent = "";
-  autoResizeTextarea(form.elements.notes);
+  registerAutosizeTextarea(form.elements.notes);
+  form.elements.notes?.dispatchEvent(new Event("input", { bubbles: false }));
 };
 
 const openEmailDialog = (projectId, task = null) => {
@@ -3300,6 +3611,7 @@ const closeEmailDialog = () => {
     form.reset();
     resetLinkList(elements.emailLinksList);
     if (elements.emailError) elements.emailError.textContent = "";
+    applySavedTextareaHeight(form.elements.notes);
   }
   if (dialog) {
     if (typeof dialog.close === "function") dialog.close();
@@ -3428,7 +3740,7 @@ const resetQuickAddForm = () => {
   syncQuickAddSelectors();
   const descriptionField = elements.quickAddForm?.elements?.description;
   if (descriptionField) {
-    autoResizeTextarea(descriptionField);
+    applySavedTextareaHeight(descriptionField);
   }
 };
 
@@ -3598,7 +3910,8 @@ const openTaskDialog = (taskId) => {
 
   elements.dialogForm.title.value = task.title;
   elements.dialogForm.description.value = task.description ?? "";
-  autoResizeTextarea(elements.dialogForm.description);
+  registerAutosizeTextarea(elements.dialogForm.description);
+  elements.dialogForm.description?.dispatchEvent(new Event("input", { bubbles: false }));
   elements.dialogForm.dueDate.value = task.dueDate ?? "";
   elements.dialogForm.priority.value = task.priority ?? "medium";
   elements.dialogForm.project.value = task.projectId ?? "inbox";
@@ -3633,6 +3946,9 @@ const closeTaskDialog = () => {
   if (elements.dialogAttachmentsInput) {
     elements.dialogAttachmentsInput.value = "";
   }
+  if (elements.dialogForm?.elements?.description) {
+    applySavedTextareaHeight(elements.dialogForm.elements.description);
+  }
   if (typeof elements.taskDialog.close === "function") {
     elements.taskDialog.close();
   } else {
@@ -3640,30 +3956,43 @@ const closeTaskDialog = () => {
   }
 };
 
+const focusTaskRow = (taskId) => {
+  const row = document.querySelector(`.task-item[data-task-id="${taskId}"]`);
+  if (!row) return;
+  row.scrollIntoView({ block: "center", behavior: "smooth" });
+  row.classList.add("task-item--focus");
+  window.setTimeout(() => row.classList.remove("task-item--focus"), 1200);
+};
+
 const navigateToTask = (taskId) => {
   const task = state.tasks.find((entry) => entry.id === taskId);
   if (!task) return;
   const project = getProjectById(task.projectId);
   const companyId = project?.companyId ?? DEFAULT_COMPANY.id;
+  const isInbox = task.projectId === "inbox";
+  const isCompleted = Boolean(task.completed);
 
   if (state.activeCompanyId !== companyId) {
     setActiveCompany(companyId);
   }
 
-  if (task.projectId === "inbox") {
-    setActiveView("view", "workspace");
-  } else {
-    setActiveView("project", task.projectId);
-  }
-
-  state.activeTaskTab = "active";
-  state.activeAllTab = "created";
+  state.activeAllTab = isCompleted ? "completed" : "created";
+  state.activeTaskTab = !isInbox && isCompleted ? "completed" : "active";
 
   if (state.viewMode !== "list") {
     setViewMode("list");
   }
 
-  window.requestAnimationFrame(() => openTaskDialog(taskId));
+  if (isInbox) {
+    setActiveView("view", "workspace");
+  } else {
+    setActiveView("project", task.projectId);
+  }
+
+  window.requestAnimationFrame(() => {
+    focusTaskRow(taskId);
+    openTaskDialog(taskId);
+  });
 };
 
 const handleDialogSubmit = (event) => {
@@ -5149,6 +5478,10 @@ const registerEventListeners = () => {
   });
   elements.meetingForm?.addEventListener("submit", handleMeetingFormSubmit);
   elements.meetingForm?.addEventListener("click", handleMeetingFormClick);
+  elements.meetingActionList?.addEventListener("change", handleMeetingActionListChange);
+  elements.meetingActionList?.addEventListener("input", handleMeetingActionListInput);
+  elements.meetingActionInput?.addEventListener("keydown", handleMeetingActionInputKeydown);
+  elements.meetingActionInput?.addEventListener("paste", handleMeetingActionInputPaste);
   elements.meetingDialog?.addEventListener("cancel", (event) => {
     event.preventDefault();
     closeMeetingDialog();
@@ -5182,6 +5515,7 @@ const registerEventListeners = () => {
   });
 
   elements.taskTabPanels?.addEventListener("change", handleTaskCheckboxChange);
+  elements.taskTabPanels?.addEventListener("click", handleTaskItemOpen);
   elements.taskTabPanels?.addEventListener("click", handleTaskActionClick);
 
   if (elements.quickAddForm) {
@@ -5199,6 +5533,7 @@ const registerEventListeners = () => {
   if (elements.searchInputMobile) {
     elements.searchInputMobile.addEventListener("input", (event) => setSearchTerm(event.target.value));
   }
+  elements.searchResults?.addEventListener("click", handleSearchResultClick);
   elements.metricFilter?.addEventListener("change", (event) => {
     state.metricsFilter = event.target.value;
     savePreferences();
@@ -5248,8 +5583,9 @@ const registerEventListeners = () => {
 
 const init = async () => {
   registerEventListeners();
-  initialiseTextareaAutosize();
   await hydrateState();
+  initialiseTextareaAutosize();
+  renderMeetingActionItems();
   render();
 };
 

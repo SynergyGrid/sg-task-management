@@ -5,6 +5,11 @@ const STORAGE_KEYS = {
   settings: "synergygrid.todoist.settings.v1",
   members: "synergygrid.todoist.members.v1",
   departments: "synergygrid.todoist.departments.v1",
+  tasks: "synergygrid.todoist.tasks.v2",
+  projects: "synergygrid.todoist.projects.v2",
+  sections: "synergygrid.todoist.sections.v1",
+  companies: "synergygrid.todoist.companies.v1",
+  userguide: "synergygrid.todoist.userguide.v1",
 };
 
 const WORKSPACE_ID = import.meta.env.VITE_FIREBASE_WORKSPACE_ID ?? 'default';
@@ -107,6 +112,17 @@ const saveSettingsRemote = async (settings) => {
   }
 };
 
+const readLocalJSON = (key, fallback) => {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+};
+
 const fetchRemoteSettings = async () => {
   try {
     const snapshot = await getDoc(workspaceRef);
@@ -147,6 +163,7 @@ const elements = {
   departmentList: document.getElementById("settingsDepartmentList"),
   departmentForm: document.getElementById("settingsDepartmentForm"),
   departmentError: document.querySelector('[data-department-error]'),
+  exportWorkspace: document.getElementById("exportWorkspace"),
 };
 
 let teamMembers = [];
@@ -277,6 +294,8 @@ elements.resetButton.addEventListener("click", async () => {
   await saveSettingsRemote(draft);
   showStatus("Settings reset to defaults.", "success");
 });
+
+elements.exportWorkspace?.addEventListener("click", handleExportWorkspaceClick);
 
 populateForm(draft);
 updatePreview();
@@ -548,6 +567,53 @@ const handleDepartmentListClick = (event) => {
     } else if (elements.departmentError) {
       elements.departmentError.textContent = "";
     }
+  }
+};
+
+const handleExportWorkspaceClick = async () => {
+  if (!elements.exportWorkspace || elements.exportWorkspace.disabled) return;
+  elements.exportWorkspace.disabled = true;
+  elements.exportWorkspace.setAttribute("aria-busy", "true");
+
+  let remoteData = null;
+  try {
+    const snapshot = await getDoc(workspaceRef);
+    if (snapshot.exists()) {
+      remoteData = snapshot.data();
+    }
+  } catch (error) {
+    console.error("Failed to refresh workspace snapshot before export", error);
+  }
+
+  const pickArray = (value, fallback = []) => (Array.isArray(value) ? value : fallback);
+
+  const payload = {
+    tasks: pickArray(remoteData?.tasks, readLocalJSON(STORAGE_KEYS.tasks, [])),
+    projects: pickArray(remoteData?.projects, readLocalJSON(STORAGE_KEYS.projects, [])),
+    sections: pickArray(remoteData?.sections, readLocalJSON(STORAGE_KEYS.sections, [])),
+    companies: pickArray(remoteData?.companies, readLocalJSON(STORAGE_KEYS.companies, [])),
+    members: pickArray(remoteData?.members, teamMembers),
+    departments: pickArray(remoteData?.departments, teamDepartments),
+    userguide: pickArray(remoteData?.userguide, readLocalJSON(STORAGE_KEYS.userguide, [])),
+    exportedAt: new Date().toISOString(),
+  };
+
+  try {
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "synergy-tasks-backup.json";
+    anchor.rel = "noopener";
+    anchor.click();
+    URL.revokeObjectURL(url);
+    showStatus("Workspace export downloaded.", "success");
+  } catch (error) {
+    console.error("Failed to export workspace snapshot", error);
+    showStatus("Unable to export workspace right now.", "error");
+  } finally {
+    elements.exportWorkspace.disabled = false;
+    elements.exportWorkspace.removeAttribute("aria-busy");
   }
 };
 

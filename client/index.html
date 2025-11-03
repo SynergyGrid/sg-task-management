@@ -79,11 +79,6 @@
             </label>
             <div id="searchResults" class="search-suggestions" hidden></div>
           </div>
-          <button id="exportTasks" class="nav-icon-btn" title="Export tasks">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m4 16 4 4 4-4m-4 4V4m7 4h4a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-4"></path>
-            </svg>
-          </button>
           <button class="nav-icon-btn md:hidden" type="button" data-action="open-userguide" aria-controls="userguidePanel" aria-label="Open userguide">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M9.09 9a3 3 0 1 1 5.82 1.5c-.54 1.06-1.59 1.49-1.91 2.5-.08.27-.1.52-.1 1" />
@@ -242,7 +237,7 @@
               </div>
               <div class="sm:col-span-2 lg:col-span-2 xl:col-span-3">
                 <label class="field-label">Description</label>
-                <textarea name="description" rows="1" placeholder="Context, blockers, next steps" class="field-input"></textarea>
+                <textarea name="description" rows="3" placeholder="Context, blockers, next steps" class="field-input" data-autosize-key="quick-add-description" data-autosize-default="220"></textarea>
               </div>
               <div>
                 <label class="field-label">Due</label>
@@ -340,7 +335,7 @@
         </label>
         <label class="form-field">
           <span class="field-label">Description</span>
-          <textarea name="description" rows="4" class="field-input"></textarea>
+          <textarea name="description" rows="4" class="field-input" data-autosize-key="dialog-description" data-autosize-default="240"></textarea>
         </label>
         <div class="form-row">
           <label class="form-field">
@@ -406,6 +401,7 @@
         <p class="task-meta text-sm text-slate-500 flex flex-wrap gap-2"></p>
       </div>
       <div class="task-actions flex items-center gap-2">
+        <button type="button" class="ghost-button small" data-action="complete">Mark completed</button>
         <button type="button" class="chip-button" data-action="edit">Edit</button>
       </div>
     </li>
@@ -485,15 +481,25 @@
         </div>
         <label class="form-field">
           <span class="field-label">Attendees</span>
-          <textarea name="attendees" rows="2" class="field-input" placeholder="Alex, Jamie, product squad"></textarea>
+          <textarea name="attendees" rows="2" class="field-input" placeholder="Alex, Jamie, product squad" data-autosize-key="meeting-attendees" data-autosize-default="180"></textarea>
         </label>
         <label class="checkbox-field">
           <input type="checkbox" name="actionItems" />
           <span>Action items captured</span>
         </label>
         <label class="form-field">
+          <span class="field-label">Action items</span>
+          <div class="field-group" data-meeting-action-items>
+            <div class="action-items-list" data-meeting-action-list></div>
+            <div class="flex items-center gap-2">
+              <input type="text" class="field-input flex-1" placeholder="Add action item and press Enter" data-meeting-action-input />
+              <button type="button" class="ghost-button small" data-action="meeting-add-action">Add</button>
+            </div>
+          </div>
+        </label>
+        <label class="form-field">
           <span class="field-label">Notes</span>
-          <textarea name="notes" rows="3" class="field-input" placeholder="Agenda, context and decisions"></textarea>
+          <textarea name="notes" rows="3" class="field-input" placeholder="Agenda, context and decisions" data-autosize-key="meeting-notes" data-autosize-default="260"></textarea>
         </label>
         <div class="field-group">
           <div class="flex items-center justify-between">
@@ -563,7 +569,7 @@
         </label>
         <label class="form-field">
           <span class="field-label">Notes</span>
-          <textarea name="notes" rows="3" class="field-input" placeholder="Summary, next steps, context"></textarea>
+          <textarea name="notes" rows="3" class="field-input" placeholder="Summary, next steps, context" data-autosize-key="email-notes" data-autosize-default="260"></textarea>
         </label>
         <div class="field-group">
           <div class="flex items-center justify-between">

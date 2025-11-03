@@ -377,6 +377,11 @@ body {
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
 }
 
+.task-item.task-item--focus {
+  border-color: rgba(37, 99, 235, 0.6);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+}
+
 .task-content {
   display: grid;
   gap: 0.35rem;
@@ -978,7 +983,8 @@ header.dragging-section {
 
 .selector-item-actions {
   display: flex;
-  gap: 0.25rem;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .selector-action-btn {
@@ -1042,6 +1048,53 @@ header.dragging-section {
 }
 
 .userguide-list li {
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.userguide-card h2 {
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.userguide-card h3 {
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.userguide-card p {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: #475569;
+  margin-bottom: 0.75rem;
+}
+
+.userguide-list__unordered,
+.userguide-list__ordered {
+  margin: 0.35rem 0 0.75rem 1.25rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: #475569;
+}
+
+.userguide-list__unordered {
+  list-style: disc;
+}
+
+.userguide-list__ordered {
+  list-style: decimal;
+}
+
+.userguide-list__unordered li,
+.userguide-list__ordered li {
   font-size: 0.95rem;
   line-height: 1.55;
 }
@@ -1304,4 +1357,40 @@ header.dragging-section {
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
+}
+
+.action-items-list {
+  min-height: 160px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 0.85rem;
+  padding: 0.75rem;
+  background: rgba(248, 250, 252, 0.92);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.action-items-empty {
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.action-item-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.action-item-row.completed .action-item-input {
+  text-decoration: line-through;
+  color: #94a3b8;
+}
+
+.action-item-input {
+  flex: 1;
+}
+
+.action-item-checkbox {
+  width: 18px;
+  height: 18px;
 }
