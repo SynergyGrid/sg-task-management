@@ -2347,8 +2347,11 @@ const buildUserguideFragment = (entries) => {
   };
 
   entries.forEach((rawLine) => {
-    const line = rawLine.trim();
+    let line = typeof rawLine === "string" ? rawLine.trim() : "";
     if (!line) return;
+    if (!line.startsWith("## ") && !line.startsWith("### ") && !/^[-]\s+/.test(line) && !/^\d+\.\s*/.test(line)) {
+      line = `- ${line}`;
+    }
     if (line.startsWith("### ")) {
       closeList();
       const heading = document.createElement("h3");
