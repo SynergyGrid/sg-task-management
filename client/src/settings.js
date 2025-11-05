@@ -66,19 +66,6 @@ const generateId = (prefix) => {
   return window.crypto?.randomUUID?.() ?? fallback;
 };
 
-const hexToRgba = (hex, alpha) => {
-  if (!hex) return `rgba(37, 99, 235, ${alpha})`;
-  const normalized = (hex || "").replace("#", "");
-  const extended = normalized.length === 3
-    ? normalized.split("").map((char) => char + char).join("")
-    : normalized;
-  const bigint = Number.parseInt(extended || "000000", 16);
-  const r = (bigint >> 16) & 255;
-  const g = (bigint >> 8) & 255;
-  const b = bigint & 255;
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-};
-
 const loadLocalSettings = () => {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEYS.settings);
@@ -144,16 +131,8 @@ const elements = {
   form: document.getElementById("settingsForm"),
   profileName: document.getElementById("profileName"),
   profilePhoto: document.getElementById("profilePhoto"),
-  accentColor: document.getElementById("accentColor"),
-  priorityCritical: document.getElementById("priorityCritical"),
-  priorityVeryHigh: document.getElementById("priorityVeryHigh"),
-  priorityHigh: document.getElementById("priorityHigh"),
-  priorityMedium: document.getElementById("priorityMedium"),
-  priorityLow: document.getElementById("priorityLow"),
-  priorityOptional: document.getElementById("priorityOptional"),
   profilePreviewAvatar: document.getElementById("profilePreviewAvatar"),
   profilePreviewName: document.getElementById("profilePreviewName"),
-  priorityPreviewChips: document.querySelectorAll("[data-preview-chip]"),
   resetButton: document.getElementById("resetSettings"),
   saveStatus: document.getElementById("saveStatus"),
   memberList: document.getElementById("settingsMemberList"),
@@ -171,49 +150,18 @@ let teamDepartments = [];
 
 let draft = normaliseSettings(loadLocalSettings());
 
-const applyThemePreview = (settings) => {
-  const root = document.documentElement;
-  root.style.setProperty("--accent", settings.theme.accent);
-  root.style.setProperty("--accent-soft", hexToRgba(settings.theme.accent, 0.15));
-  root.style.setProperty("--accent-strong", hexToRgba(settings.theme.accent, 0.25));
-  const { priorities } = settings.theme;
-  root.style.setProperty("--priority-critical", priorities.critical);
-  root.style.setProperty("--priority-very-high", priorities.veryHigh);
-  root.style.setProperty("--priority-high", priorities.high);
-  root.style.setProperty("--priority-medium", priorities.medium);
-  root.style.setProperty("--priority-low", priorities.low);
-  root.style.setProperty("--priority-optional", priorities.optional);
-
-  elements.priorityPreviewChips.forEach((chip) => {
-    const key = chip.dataset.previewChip;
-    if (!key) return;
-    const color = priorities[key] || settings.theme.accent;
-    chip.style.setProperty("background", hexToRgba(color, 0.18));
-    chip.style.setProperty("border-color", hexToRgba(color, 0.25));
-    chip.style.setProperty("color", color);
-  });
-};
-
 const applyProfilePreview = (settings) => {
   elements.profilePreviewName.textContent = settings.profile.name;
   elements.profilePreviewAvatar.src = settings.profile.photo;
 };
 
 const populateForm = (settings) => {
-  elements.profileName.value = settings.profile.name;
-  elements.profilePhoto.value = settings.profile.photo;
-  elements.accentColor.value = settings.theme.accent;
-  elements.priorityCritical.value = settings.theme.priorities.critical;
-  elements.priorityVeryHigh.value = settings.theme.priorities.veryHigh;
-  elements.priorityHigh.value = settings.theme.priorities.high;
-  elements.priorityMedium.value = settings.theme.priorities.medium;
-  elements.priorityLow.value = settings.theme.priorities.low;
-  elements.priorityOptional.value = settings.theme.priorities.optional;
+  if (elements.profileName) elements.profileName.value = settings.profile.name;
+  if (elements.profilePhoto) elements.profilePhoto.value = settings.profile.photo;
 };
 
 const updatePreview = () => {
   applyProfilePreview(draft);
-  applyThemePreview(draft);
 };
 
 const handleInputChange = (event) => {
@@ -229,33 +177,6 @@ const handleInputChange = (event) => {
       draft = {
         ...draft,
         profile: { ...draft.profile, photo: value },
-      };
-      break;
-    case "accentColor":
-      draft = {
-        ...draft,
-        theme: {
-          ...draft.theme,
-          accent: value,
-          priorities: { ...draft.theme.priorities },
-        },
-      };
-      break;
-    case "priorityCritical":
-    case "priorityVeryHigh":
-    case "priorityHigh":
-    case "priorityMedium":
-    case "priorityLow":
-    case "priorityOptional":
-      draft = {
-        ...draft,
-        theme: {
-          ...draft.theme,
-          priorities: {
-            ...draft.theme.priorities,
-            [id.replace("priority", "").charAt(0).toLowerCase() + id.replace("priority", "").slice(1)]: value,
-          },
-        },
       };
       break;
     default:
