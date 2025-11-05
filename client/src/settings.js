@@ -61,6 +61,83 @@ const DEFAULT_DEPARTMENT = {
   createdAt: new Date().toISOString(),
 };
 
+const coerceString = (value) => (typeof value === "string" ? value.trim() : "");
+
+const asArray = (value, fallback = []) => {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === "object") {
+    const values = Object.values(value).filter((entry) => entry !== null && entry !== undefined);
+    return values.length ? values : fallback;
+  }
+  return fallback;
+};
+
+const dedupeById = (entries) => {
+  const byId = new Map();
+  entries.forEach((entry) => {
+    if (!entry || typeof entry !== "object") return;
+    const candidateId = coerceString(entry.id);
+    if (!candidateId) return;
+    if (!byId.has(candidateId)) {
+      byId.set(candidateId, { ...entry, id: candidateId });
+    }
+  });
+  return [...byId.values()];
+};
+
+const normaliseDepartmentRecord = (record) => {
+  if (!record || typeof record !== "object") return null;
+  const id = coerceString(record.id);
+  const name =
+    coerceString(record.name) ||
+    coerceString(record.label) ||
+    coerceString(record.title);
+  if (!id || !name) return null;
+  return {
+    ...record,
+    id,
+    name,
+    isDefault: Boolean(record.isDefault) || id === DEFAULT_DEPARTMENT.id,
+  };
+};
+
+const normaliseMemberRecord = (record) => {
+  if (!record || typeof record !== "object") return null;
+  const id = coerceString(record.id);
+  const name =
+    coerceString(record.name) ||
+    coerceString(record.displayName) ||
+    coerceString(record.fullName) ||
+    coerceString(record.display_name);
+  if (!id || !name) return null;
+  const departmentId =
+    coerceString(record.departmentId) ||
+    coerceString(record.department_id) ||
+    coerceString(record.department) ||
+    "";
+  return {
+    ...record,
+    id,
+    name,
+    departmentId,
+  };
+};
+
+const sortDepartments = (departments) =>
+  departments.slice().sort((a, b) => {
+    if (a.id === DEFAULT_DEPARTMENT.id) return -1;
+    if (b.id === DEFAULT_DEPARTMENT.id) return 1;
+    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  });
+
+const sortMembers = (members) =>
+  members.slice().sort((a, b) => {
+    if (!a.name && !b.name) return 0;
+    if (!a.name) return 1;
+    if (!b.name) return -1;
+    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  });
+
 const generateId = (prefix) => {
   const fallback = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
   return window.crypto?.randomUUID?.() ?? fallback;
@@ -235,7 +312,7 @@ const loadLocalArray = (key, fallback = []) => {
     const raw = window.localStorage.getItem(key);
     if (!raw) return fallback;
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : fallback;
+    return asArray(parsed, fallback);
   } catch {
     return fallback;
   }
@@ -249,7 +326,27 @@ const saveLocalArray = (key, value) => {
   }
 };
 
+const normaliseTeamCollections = () => {
+  const normalisedDepartments = dedupeById(
+    asArray(teamDepartments).map(normaliseDepartmentRecord).filter(Boolean),
+  );
+  teamDepartments = sortDepartments(normalisedDepartments);
+  ensureDefaultDepartmentPresent();
+  const validDepartmentIds = new Set(teamDepartments.map((department) => department.id));
+  const normalisedMembers = dedupeById(
+    asArray(teamMembers)
+      .map(normaliseMemberRecord)
+      .filter(Boolean)
+      .map((member) => ({
+        ...member,
+        departmentId: validDepartmentIds.has(member.departmentId) ? member.departmentId : "",
+      })),
+  );
+  teamMembers = sortMembers(normalisedMembers);
+};
+
 const syncTeamLocal = () => {
+  normaliseTeamCollections();
   saveLocalArray(STORAGE_KEYS.members, teamMembers);
   saveLocalArray(STORAGE_KEYS.departments, teamDepartments);
 };
@@ -265,6 +362,7 @@ const getDepartmentName = (departmentId) =>
 
 const populateMemberDepartmentOptions = (selectedId = "") => {
   if (!elements.memberDepartment) return;
+  normaliseTeamCollections();
   const fragment = document.createDocumentFragment();
   const defaultOption = document.createElement("option");
   defaultOption.value = "";
@@ -307,6 +405,7 @@ const createDepartmentSelect = (selectedId = "", dataset = {}) => {
 
 const renderDepartmentList = () => {
   if (!elements.departmentList) return;
+  normaliseTeamCollections();
   if (!teamDepartments.length) {
     const empty = document.createElement("li");
     empty.textContent = "No departments yet.";
@@ -366,6 +465,7 @@ const renderDepartmentList = () => {
 
 const renderMemberList = () => {
   if (!elements.memberList) return;
+  normaliseTeamCollections();
   if (!teamMembers.length) {
     const empty = document.createElement("li");
     empty.textContent = "No members yet.";
@@ -542,24 +642,20 @@ const removeMember = (memberId) => {
 const loadTeamData = async () => {
   teamMembers = loadLocalArray(STORAGE_KEYS.members, []);
   teamDepartments = loadLocalArray(STORAGE_KEYS.departments, []);
-  ensureDefaultDepartmentPresent();
+  normaliseTeamCollections();
   try {
     const snapshot = await getDoc(workspaceRef);
     if (snapshot.exists()) {
       const data = snapshot.data();
-      if (Array.isArray(data.members)) {
-        teamMembers = data.members;
-      }
-      if (Array.isArray(data.departments)) {
-        teamDepartments = data.departments;
-      }
-      ensureDefaultDepartmentPresent();
+      teamMembers = asArray(data.members, teamMembers);
+      teamDepartments = asArray(data.departments, teamDepartments);
+      normaliseTeamCollections();
       syncTeamLocal();
     }
   } catch (error) {
     console.error('Failed to load team data from Firestore', error);
   }
-  ensureDefaultDepartmentPresent();
+  normaliseTeamCollections();
   populateMemberDepartmentOptions();
   renderDepartmentList();
   renderMemberList();
