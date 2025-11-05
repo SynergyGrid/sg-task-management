@@ -61,7 +61,11 @@ const DEFAULT_DEPARTMENT = {
   createdAt: new Date().toISOString(),
 };
 
-const coerceString = (value) => (typeof value === "string" ? value.trim() : "");
+const coerceString = (value) => {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") return String(value).trim();
+  return "";
+};
 
 const asArray = (value, fallback = []) => {
   if (Array.isArray(value)) return value;
