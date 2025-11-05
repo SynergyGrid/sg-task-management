@@ -91,57 +91,62 @@ const AUTOSIZE_RESET_KEYS = new Set([
   "meeting-notes",
   "email-notes",
 ]);
-const DEFAULT_USERGUIDE = [
-  "## Workspace Overview",
-  "- Shared access – everyone lands in the same workspace automatically; anything you add or update shows live for teammates.",
-  "- Companies – switch companies from the dropdown near the top left. Each company keeps its own projects, sections, and members, so confirm the badge before adding work.",
-  "- Projects – the project dropdown lists only items for the selected company. Use the inline “+” to add, the pencil to rename, and the trash icon to archive finished work.",
-  "## Main Views",
-  "- Inbox – uncategorised tasks that need sorting; overdue and high-priority work is highlighted automatically.",
-  "- Today – shows everything due today plus anything overdue.",
-  "- Upcoming – a rolling 7-day look-ahead grouped by day so you can plan what’s next.",
-  "- List ↔ Board toggle – every project remembers whether you prefer the list or kanban-style board. Switch at the top of the project view.",
-  "## Sections & Boards",
-  "- Add sections – click “Add section” in a project to introduce new columns for your workflow.",
-  "- Rename / reorder – use the three-dot menu on each section to rename or delete; drag section headers to rearrange.",
-  "- Move tasks – drag cards between columns to reflect progress; use the same gesture to reorder items inside a column.",
-  "## Creating & Editing Tasks",
-  "- Quick add form – capture tasks from the header, choose the destination project/section, assign teammates, set due date and priority, and attach files in one go.",
-  "- Task dialog – click any task to open full details for descriptions, attachments, history, or moving it to another project/company.",
-  "- Priorities – pick from Critical, Very High, High, Medium, Low, or Optional; colours and sorting align with those levels.",
-  "- Due dates – enter a specific day when you know it, or leave blank for flexible items.",
-  "- Attachments – upload supporting files from either the quick form or the dialog; they stay with the task.",
-  "- Task cards surface the first three lines of notes plus assignee, action items, and due dates at a glance.",
-  "- Use the Mark completed / Restore control inside the task dialog to switch status.",
-  "- Closing any task, meeting, or email dialog auto-saves your changes.",
-  "## Meetings & Emails",
-  "- Meeting quick action – log attendees, meeting type, links, notes, and follow-up checklist items. Paste multiple lines to create checklist entries instantly.",
-  "- Meetings appear in the project overview so you can monitor follow-ups without leaving the main view.",
-  "- Email quick action – track important threads with status, notes, and supporting links. Notes resize automatically to fit longer summaries.",
-  "- Mark meetings and emails complete straight from their dialog headers—changes save automatically when you close.",
-  "## Finding & Monitoring Work",
-  "- Search – the global search bar filters the current view by title, description, assignee, or department as you type.",
-  "- Metrics card – tracks active tasks, overdue counts, and completions; narrow the snapshot by department when needed.",
-  "- Completed toggle – show or hide completed items with the switch in any list view so you can focus on open work.",
-  "## Activity & History",
-  "- Activity feed – the live timeline highlights new tasks, updates, and completions so you can catch up fast.",
-  "- Mark complete – the checkmark on each card toggles completion status and stores the timestamp automatically.",
-  "## Userguide Panel",
-  "- Read / edit – open “Userguide” from the sidebar to see current instructions. Click “Edit guide” to update the content; everyone sees the changes instantly.",
-  "- Best practice – refresh the guide whenever the process changes so the workspace stays aligned.",
-  "## Exports & Housekeeping",
-  "- Download data – use the “Download” button in the header to grab a JSON backup before big edits or for handing off to clients.",
-  "- Reset view – if things look out of sync, refresh local data from Settings to pull a clean copy from the shared workspace.",
-  "## WhatsApp Chat Importer",
-  "- Prepare destination – make sure the company and project that should receive imported tasks already exist (defaults: company “GENERAL”, project “General Project”).",
-  "- Upload chat – open “Import WhatsApp” in the header, choose a recent export .zip or .txt (without media), and the app analyses the last 30 days of messages.",
-  "- Review summary – after processing, you’ll see how many messages were read, how many tasks were created, and the date range covered; a confirmation popup lists the chat name.",
-  "- Avoid duplicates – the importer remembers the latest message processed per chat. Clear the stored timestamp (see Admin instructions) before re-importing the same history.",
-  "- After import – new tasks land in the chosen project/section with titles, descriptions, assignees, due dates (when mentioned), and a note referencing the original message.",
-  "## Maintaining This Guide",
-  "- Update this guide whenever the product changes. Use headings (`##`, `###`), bullet lists (`- item`), and numbered steps (`1.`) so updates stay readable.",
-  "- When you ship a new improvement, add or revise the relevant section here so teammates understand what changed.",
-];
+const DEFAULT_USERGUIDE_MARKDOWN = `
+## Workspace Overview
+- Shared access – everyone lands in the same workspace automatically; anything you add or update appears live for teammates.
+- Companies – switch companies from the dropdown near the top left. Each company keeps its own projects, sections, and members, so confirm the badge before adding work.
+- Projects – the project dropdown lists only items for the selected company. Use the inline "+" to add, the pencil to rename, and the trash icon to archive finished work.
+## Main Views
+- Inbox – uncategorised tasks that need sorting; overdue and high-priority work is highlighted automatically.
+- Today – shows everything due today plus anything overdue.
+- Upcoming – a rolling 7-day look-ahead grouped by day so you can plan what’s next.
+- List ↔ Board toggle – every project remembers whether you prefer the list or kanban-style board. Switch at the top of the project view.
+## Sections & Boards
+- Add sections – click "Add section" in a project to introduce new columns for your workflow.
+- Rename / reorder – use the three-dot menu on each section to rename or delete; drag section headers to rearrange.
+- Move tasks – drag cards between columns to reflect progress; use the same gesture to reorder items inside a column.
+## Creating & Editing Tasks
+- Quick add form – capture tasks from the header, choose the destination project/section, assign teammates, set due date and priority, and attach files in one go.
+- Task dialog – click any task to open full details for descriptions, attachments, history, or moving it to another project/company.
+- Priorities – pick from Critical, Very High, High, Medium, Low, or Optional; colours and sorting align with those levels.
+- Due dates – enter a specific day when you know it, or leave blank for flexible items.
+- Attachments – upload supporting files from either the quick form or the dialog; they stay with the task.
+- Task cards surface the first three lines of notes plus assignee, action items, and due dates at a glance.
+- Use the Mark completed / Restore control inside the task dialog to switch status.
+- Closing any task, meeting, or email dialog auto-saves your changes.
+## Meetings & Emails
+- Meeting quick action – log attendees, meeting type, links, notes, and follow-up checklist items. Paste multiple lines to create checklist entries instantly.
+- Meetings appear in the project overview so you can monitor follow-ups without leaving the main view.
+- Email quick action – track important threads with status, notes, and supporting links. Notes resize automatically to fit longer summaries.
+- Mark meetings and emails complete straight from their dialog headers—changes save automatically when you close.
+## People & Departments
+- Manage members – use the Settings roster to add, edit, or remove teammates so everyone is available for assignment.
+- Manage departments – group tasks by department for reporting; the same list powers the drop-down in task forms.
+- Settings automatically loads existing members and departments from the shared workspace so you can edit what’s already there.
+## Finding & Monitoring Work
+- Search – the global search bar filters the current view by title, description, assignee, or department as you type.
+- Metrics card – tracks active tasks, overdue counts, and completions; narrow the snapshot by department when needed.
+- Completed toggle – show or hide completed items with the switch in any list view so you can focus on open work.
+## Activity & History
+- Activity feed – the live timeline highlights new tasks, updates, and completions so you can catch up fast.
+- Mark complete – the checkmark on each card toggles completion status and stores the timestamp automatically.
+## Userguide Panel
+- Read / edit – open "Userguide" from the sidebar to see current instructions. Click "Edit guide" to update the content; everyone sees the changes instantly.
+- Best practice – refresh the guide whenever the process changes so the workspace stays aligned.
+## Exports & Housekeeping
+- Download data – use the "Download" button in the header to grab a JSON backup before big edits or for handing off to clients.
+- Reset view – if things look out of sync, refresh local data from Settings to pull a clean copy from the shared workspace.
+## WhatsApp Chat Importer
+- Prepare destination – make sure the company and project that should receive imported tasks already exist (defaults: company "GENERAL", project "General Project").
+- Upload chat – open "Import WhatsApp" in the header, choose a recent export .zip or .txt (without media), and the app analyses the last 30 days of messages.
+- Review summary – after processing, you’ll see how many messages were read, how many tasks were created, and the date range covered; a confirmation popup lists the chat name.
+- Avoid duplicates – the importer remembers the latest message processed per chat. Clear the stored timestamp (see Admin instructions) before re-importing the same history.
+- After import – new tasks land in the chosen project/section with titles, descriptions, assignees, due dates (when mentioned), and a note referencing the original message.
+## Maintaining This Guide
+- Update this guide whenever the product changes. Use headings (\`##\`, \`###\`), bullet lists (\`- item\`), and numbered steps (\`1.\`) so updates stay readable.
+- When you ship a new improvement, add or revise the relevant section here so teammates understand what changed.
+`.trim();
+const DEFAULT_USERGUIDE = DEFAULT_USERGUIDE_MARKDOWN.split(/\r?\n/);
 
 const USERGUIDE_LATEST_ENTRIES = [
   "## Main Views",
