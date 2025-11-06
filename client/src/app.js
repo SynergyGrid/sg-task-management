@@ -5281,11 +5281,12 @@ const callGeminiForActionItems = async ({
 
   const runRequest = async (targetEndpoint, targetModel) => {
     const requestBody = buildRequestBody(targetModel, targetEndpoint);
-    const url = `https://generativelanguage.googleapis.com/${targetEndpoint}/models/${encodeURIComponent(targetModel)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
+    const url = `https://generativelanguage.googleapis.com/${targetEndpoint}/models/${encodeURIComponent(targetModel)}:generateContent`;
     const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "X-Goog-Api-Key": GEMINI_API_KEY,
       },
       body: JSON.stringify(requestBody),
     });
@@ -5301,7 +5302,14 @@ const callGeminiForActionItems = async ({
   };
 
   const initialEndpoint = endpoint === "v1beta" ? "v1beta" : "v1";
-  const endpointCandidates = initialEndpoint === "v1" ? ["v1", "v1beta"] : ["v1beta", "v1"];
+  const preferBetaFirst = /^gemini-1\.5/i.test((model || GEMINI_MODEL || "").trim());
+  const preferredOrder = preferBetaFirst ? ["v1beta", "v1"] : ["v1", "v1beta"];
+  const endpointCandidates =
+    initialEndpoint === preferredOrder[0]
+      ? preferredOrder
+      : initialEndpoint === preferredOrder[1]
+        ? [preferredOrder[1], preferredOrder[0]]
+        : preferredOrder;
 
   const modelCandidates = (() => {
     const candidates = [];
@@ -5411,7 +5419,7 @@ const callGeminiForActionItems = async ({
         throw new Error(message);
       }
 
-      lastError = message;
+      lastError = `${message} (endpoint ${endpointCandidate}, model ${modelCandidate})`;
     }
   }
 
