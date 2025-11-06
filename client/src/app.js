@@ -17,8 +17,9 @@ const STORAGE_KEYS = {
 const GEMINI_MODEL = import.meta.env.VITE_GEMINI_MODEL || "gemini-1.5-flash";
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
 const WHATSAPP_LOOKBACK_DAYS = Number.parseInt(import.meta.env.VITE_WHATSAPP_LOOKBACK_DAYS ?? "30", 10);
-const WHATSAPP_COMPANY_NAME = import.meta.env.VITE_WHATSAPP_COMPANY_NAME || "GENERAL";
-const WHATSAPP_PROJECT_NAME = import.meta.env.VITE_WHATSAPP_PROJECT_NAME || "General Project";
+const WHATSAPP_COMPANY_NAME = import.meta.env.VITE_WHATSAPP_COMPANY_NAME || "";
+const WHATSAPP_PROJECT_NAME = import.meta.env.VITE_WHATSAPP_PROJECT_NAME || "WhatsApp Tasks";
+const WHATSAPP_SECTION_NAME = import.meta.env.VITE_WHATSAPP_SECTION_NAME || "WhatsApp Tasks";
 const WHATSAPP_DEFAULT_ENDPOINT = (import.meta.env.VITE_WHATSAPP_ENDPOINT || "v1").toLowerCase() === "v1beta" ? "v1beta" : "v1";
 const MAX_WHATSAPP_LINES = Number.parseInt(import.meta.env.VITE_WHATSAPP_MAX_LINES ?? "2000", 10);
 const WHATSAPP_LOG_SHEET_ID = import.meta.env.VITE_WHATSAPP_LOG_SHEET_ID || "";
@@ -271,6 +272,7 @@ const state = {
     model: GEMINI_MODEL,
     endpoint: WHATSAPP_DEFAULT_ENDPOINT,
     stats: null,
+    companyId: DEFAULT_COMPANY.id,
   },
   imports: {
     whatsapp: {},
@@ -5039,26 +5041,94 @@ const normaliseDueDate = (value) => {
   return iso.slice(0, 10);
 };
 
+const findCompanyByName = (name) => {
+  if (!name || typeof name !== "string") return null;
+  const target = name.trim().toLowerCase();
+  if (!target) return null;
+  return (
+    state.companies.find((entry) => entry.name?.trim().toLowerCase() === target) ?? null
+  );
+};
+
+const ensureWhatsappProjectForCompany = (companyId) => {
+  if (!companyId) return null;
+  const desiredName = WHATSAPP_PROJECT_NAME.trim();
+  const target = desiredName.toLowerCase();
+  let project =
+    state.projects.find(
+      (entry) => entry.companyId === companyId && entry.name?.trim().toLowerCase() === target,
+    ) ?? null;
+  if (project) return project;
+
+  const timestamp = new Date().toISOString();
+  project = {
+    id: generateId("project"),
+    name: desiredName || "WhatsApp Tasks",
+    companyId,
+    color: pickProjectColor(state.projects.length),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+
+  state.projects.push(project);
+  saveProjects();
+  ensureSectionForProject(project.id);
+  return project;
+};
+
+const ensureWhatsappSectionForProject = (projectId) => {
+  if (!projectId) return null;
+  const desiredName = WHATSAPP_SECTION_NAME.trim();
+  if (desiredName) {
+    const target = desiredName.toLowerCase();
+    const existing = getSectionsForProject(projectId).find(
+      (section) => section.name?.trim().toLowerCase() === target,
+    );
+    if (existing) return existing;
+    const created = createSection(projectId, desiredName);
+    if (created) return created;
+  }
+  return ensureSectionForProject(projectId);
+};
+
 const getWhatsappDestination = () => {
-  const company = state.companies.find(
-    (entry) => entry.name?.trim().toLowerCase() === WHATSAPP_COMPANY_NAME.trim().toLowerCase(),
-  );
+  const jobCompanyId =
+    state.importJob?.companyId && state.importJob.companyId !== ALL_COMPANY_ID
+      ? state.importJob.companyId
+      : null;
+  let targetCompanyId =
+    jobCompanyId ||
+    (state.activeCompanyId && state.activeCompanyId !== ALL_COMPANY_ID
+      ? state.activeCompanyId
+      : null);
+
+  if (!targetCompanyId && WHATSAPP_COMPANY_NAME.trim()) {
+    const fallback = findCompanyByName(WHATSAPP_COMPANY_NAME);
+    if (fallback) {
+      targetCompanyId = fallback.id;
+    }
+  }
+
+  if (!targetCompanyId) {
+    throw new Error("Open the importer from a specific company to choose where WhatsApp tasks go.");
+  }
+
+  const company = getCompanyById(targetCompanyId);
   if (!company) {
-    throw new Error(
-      `Create a company named "${WHATSAPP_COMPANY_NAME}" so WhatsApp imports know where to store tasks.`,
-    );
+    throw new Error("We couldn't find that company. Refresh and try again.");
   }
-  const project = state.projects.find(
-    (entry) =>
-      entry.companyId === company.id &&
-      entry.name?.trim().toLowerCase() === WHATSAPP_PROJECT_NAME.trim().toLowerCase(),
-  );
+
+  const project = ensureWhatsappProjectForCompany(company.id);
   if (!project) {
-    throw new Error(
-      `Create a project named "${WHATSAPP_PROJECT_NAME}" inside "${WHATSAPP_COMPANY_NAME}" for WhatsApp imports.`,
-    );
+    throw new Error("We couldn't prepare a project for WhatsApp tasks. Try again.");
   }
-  const section = ensureSectionForProject(project.id);
+  const section = ensureWhatsappSectionForProject(project.id);
+  if (!section) {
+    throw new Error("We couldn't prepare a section for WhatsApp tasks. Try again.");
+  }
+
+  state.importJob.companyId = company.id;
+
   return { company, project, section };
 };
 
@@ -5355,9 +5425,15 @@ const logWhatsappActionsToSheet = async ({ chatName, tasks }) => {
   );
 };
 
-const resetWhatsappImport = () => {
+const resetWhatsappImport = (companyId = state.activeCompanyId) => {
   const model = state.importJob.model || GEMINI_MODEL;
   const endpoint = state.importJob.endpoint || WHATSAPP_DEFAULT_ENDPOINT;
+  const previousCompanyId =
+    state.importJob.companyId && state.importJob.companyId !== ALL_COMPANY_ID
+      ? state.importJob.companyId
+      : null;
+  const candidateCompanyId =
+    companyId && companyId !== ALL_COMPANY_ID ? companyId : null;
   state.importJob = {
     file: null,
     status: "idle",
@@ -5365,6 +5441,7 @@ const resetWhatsappImport = () => {
     stats: null,
     model,
     endpoint,
+    companyId: candidateCompanyId ?? previousCompanyId ?? null,
   };
   if (elements.whatsappForm) {
     elements.whatsappForm.reset();
@@ -5435,7 +5512,11 @@ const renderWhatsappImport = () => {
 };
 
 const openWhatsappDialog = () => {
-  resetWhatsappImport();
+  if (!state.activeCompanyId || state.activeCompanyId === ALL_COMPANY_ID) {
+    window.alert("Select a company first, then import the WhatsApp chat from that view.");
+    return;
+  }
+  resetWhatsappImport(state.activeCompanyId);
   const dialog = elements.whatsappDialog;
   if (!dialog) return;
   if (typeof dialog.showModal === "function") {
@@ -5486,8 +5567,10 @@ const processWhatsappImport = async () => {
 
   const lookbackDays = ensureWhatsappLookbackWindow();
   const windowStart = new Date(Date.now() - lookbackDays * MS_IN_DAY);
-  const chatKey = chatName || file.name || "default-chat";
-  const lastProcessedISO = state.imports.whatsapp[chatKey];
+  const chatIdentifier = chatName || file.name || "default-chat";
+  const chatKey = `${company.id}::${chatIdentifier}`;
+  const lastProcessedISO =
+    state.imports.whatsapp[chatKey] ?? state.imports.whatsapp[chatIdentifier] ?? null;
   const lastProcessedTime = lastProcessedISO ? new Date(lastProcessedISO).getTime() : null;
 
   const filtered = messages
@@ -5560,10 +5643,11 @@ const processWhatsappImport = async () => {
     const sender = typeof item.sourceSender === "string" ? item.sourceSender.trim() : "";
     const detail = typeof item.description === "string" ? item.description.trim() : "";
 
+    const chatLabel = chatName ? `Chat: ${chatName}` : "";
     const messageSummary = sender
-      ? `Source: ${sender} in ${chatName}`
-      : `Source chat: ${chatName}`;
-    const descriptionSegments = [detail, messageSummary];
+      ? `Source: ${sender} in ${chatName || "WhatsApp"}`
+      : `Source chat: ${chatName || "WhatsApp"}`;
+    const descriptionSegments = [chatLabel, detail, messageSummary];
     if (sourceTimestamp && !Number.isNaN(sourceTimestamp.getTime())) {
       descriptionSegments.push(`Mentioned on ${sourceTimestamp.toLocaleString()}`);
     }
@@ -5571,6 +5655,7 @@ const processWhatsappImport = async () => {
     const task = addTask({
       title,
       description: descriptionSegments.filter(Boolean).join("\n\n"),
+      source: "whatsapp",
       projectId: project.id,
       sectionId: section.id,
       assigneeId,
@@ -5590,6 +5675,9 @@ const processWhatsappImport = async () => {
   }
 
   state.imports.whatsapp[chatKey] = latestTimestamp.toISOString();
+  if (chatIdentifier in state.imports.whatsapp && chatIdentifier !== chatKey) {
+    delete state.imports.whatsapp[chatIdentifier];
+  }
   saveImports();
 
   state.importJob.model = effectiveModel;
