@@ -4650,6 +4650,21 @@ const handleCompanyFormClick = (event) => {
     closeCompanyDialog();
     return;
   }
+  if (action === "import-company-whatsapp") {
+    event.preventDefault();
+    const companyId = state.editingCompanyId;
+    if (!companyId) return;
+    const company = getCompanyById(companyId);
+    if (!company) return;
+    closeCompanyDialog();
+    if (state.activeCompanyId !== companyId) {
+      setActiveCompany(companyId);
+    }
+    window.requestAnimationFrame(() => {
+      openWhatsappDialog();
+    });
+    return;
+  }
   if (action === "delete-company") {
     event.preventDefault();
     const companyId = state.editingCompanyId;
@@ -5260,10 +5275,6 @@ const callGeminiForActionItems = async ({
         },
       ];
       body.toolConfig = { functionCall: { name: "store_action_items" } };
-    } else {
-      if (targetEndpoint === "v1") {
-        body.generationConfig.responseMimeType = "application/json";
-      }
     }
     return body;
   };
