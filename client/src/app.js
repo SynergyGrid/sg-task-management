@@ -5239,7 +5239,7 @@ const callGeminiForActionItems = async ({
     },
   ];
 
-  const buildRequestBody = (targetModel) => {
+  const buildRequestBody = (targetModel, targetEndpoint) => {
     const body = {
       contents,
       generationConfig: {
@@ -5261,13 +5261,15 @@ const callGeminiForActionItems = async ({
       ];
       body.toolConfig = { functionCall: { name: "store_action_items" } };
     } else {
-      body.generationConfig.responseMimeType = "application/json";
+      if (targetEndpoint === "v1") {
+        body.generationConfig.responseMimeType = "application/json";
+      }
     }
     return body;
   };
 
   const runRequest = async (targetEndpoint, targetModel) => {
-    const requestBody = buildRequestBody(targetModel);
+    const requestBody = buildRequestBody(targetModel, targetEndpoint);
     const url = `https://generativelanguage.googleapis.com/${targetEndpoint}/models/${encodeURIComponent(targetModel)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
     const response = await fetch(url, {
       method: "POST",
