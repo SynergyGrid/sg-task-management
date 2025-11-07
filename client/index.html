@@ -639,6 +639,12 @@
           Upload a WhatsApp chat export (<code>.zip</code> or <code>.txt</code>). Only the last 30 days are processed,
           and messages older than the last import are skipped automatically.
         </p>
+        <p class="text-xs text-slate-500" data-whatsapp-company></p>
+        <label class="form-field">
+          <span class="field-label">Destination project</span>
+          <select id="whatsappProject" class="field-input"></select>
+          <small class="text-xs text-slate-500">Tasks are added to the “WhatsApp Tasks” section inside this project.</small>
+        </label>
         <label class="form-field">
           <span class="field-label">Chat export</span>
           <input id="whatsappFile" type="file" name="whatsappFile" accept=".zip,.txt" required class="field-input" />

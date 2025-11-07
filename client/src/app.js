@@ -273,6 +273,7 @@ const state = {
     provider: WHATSAPP_DEFAULT_PROVIDER,
     stats: null,
     companyId: DEFAULT_COMPANY.id,
+    projectId: null,
   },
   imports: {
     whatsapp: {},
@@ -385,6 +386,8 @@ const elements = {
   whatsappSummary: document.querySelector("[data-whatsapp-summary]"),
   whatsappError: document.getElementById("whatsappError"),
   whatsappModel: document.getElementById("whatsappModel"),
+  whatsappProject: document.getElementById("whatsappProject"),
+  whatsappCompany: document.querySelector("[data-whatsapp-company]"),
 };
 
 
@@ -5174,7 +5177,13 @@ const getWhatsappDestination = () => {
     throw new Error("We couldn't find that company. Refresh and try again.");
   }
 
-  const project = ensureWhatsappProjectForCompany(company.id);
+  let project =
+    state.importJob.projectId && getProjectById(state.importJob.projectId)
+      ? getProjectById(state.importJob.projectId)
+      : null;
+  if (!project || project.companyId !== company.id) {
+    project = ensureWhatsappProjectForCompany(company.id);
+  }
   if (!project) {
     throw new Error("We couldn't prepare a project for WhatsApp tasks. Try again.");
   }
@@ -5184,6 +5193,7 @@ const getWhatsappDestination = () => {
   }
 
   state.importJob.companyId = company.id;
+  state.importJob.projectId = project.id;
 
   return { company, project, section };
 };
@@ -5377,6 +5387,13 @@ const logWhatsappActionsToSheet = async ({ chatName, tasks }) => {
   );
 };
 
+const resolveDefaultWhatsappProject = (companyId) => {
+  if (!companyId) return null;
+  ensureWhatsappProjectForCompany(companyId);
+  const projects = getProjectsForCompany(companyId);
+  return projects[0]?.id ?? null;
+};
+
 const resetWhatsappImport = (companyId = state.activeCompanyId) => {
   const model = state.importJob.model || OPENROUTER_MODEL;
   const provider = state.importJob.provider || WHATSAPP_DEFAULT_PROVIDER;
@@ -5386,6 +5403,22 @@ const resetWhatsappImport = (companyId = state.activeCompanyId) => {
       : null;
   const candidateCompanyId =
     companyId && companyId !== ALL_COMPANY_ID ? companyId : null;
+  const resolvedCompanyId = candidateCompanyId ?? previousCompanyId ?? null;
+  let projectId = state.importJob.projectId || null;
+  if (resolvedCompanyId) {
+    ensureWhatsappProjectForCompany(resolvedCompanyId);
+    const projects = getProjectsForCompany(resolvedCompanyId);
+    const remembered = state.companyRecents?.[resolvedCompanyId];
+    if (!projectId || !projects.some((project) => project.id === projectId)) {
+      if (remembered && projects.some((project) => project.id === remembered)) {
+        projectId = remembered;
+      } else {
+        projectId = resolveDefaultWhatsappProject(resolvedCompanyId);
+      }
+    }
+  } else {
+    projectId = null;
+  }
   state.importJob = {
     file: null,
     status: "idle",
@@ -5393,7 +5426,8 @@ const resetWhatsappImport = (companyId = state.activeCompanyId) => {
     stats: null,
     model,
     provider,
-    companyId: candidateCompanyId ?? previousCompanyId ?? null,
+    companyId: resolvedCompanyId,
+    projectId,
   };
   if (elements.whatsappForm) {
     elements.whatsappForm.reset();
@@ -5405,7 +5439,7 @@ const resetWhatsappImport = (companyId = state.activeCompanyId) => {
 };
 
 const renderWhatsappImport = () => {
-  const { file, status, error, stats, model } = state.importJob;
+  const { file, status, error, stats, model, companyId } = state.importJob;
   if (elements.whatsappPreview) {
     if (stats && file) {
       elements.whatsappPreview.hidden = false;
@@ -5413,7 +5447,9 @@ const renderWhatsappImport = () => {
         elements.whatsappFileLabel.textContent = file.name;
       }
       if (elements.whatsappRangeLabel) {
-        elements.whatsappRangeLabel.textContent = stats.range ?? "Ready to analyse";
+        elements.whatsappRangeLabel.textContent = stats.range
+          ? `Action window: ${stats.range}`
+          : "Ready to analyse";
       }
       if (elements.whatsappSummary) {
         elements.whatsappSummary.replaceChildren(
@@ -5444,6 +5480,46 @@ const renderWhatsappImport = () => {
 
   if (elements.whatsappModel) {
     elements.whatsappModel.value = model;
+  }
+  if (elements.whatsappCompany) {
+    const company = companyId ? getCompanyById(companyId) : null;
+    elements.whatsappCompany.textContent = company
+      ? `Company: ${company.name}`
+      : "Select a company view before importing.";
+  }
+  if (elements.whatsappProject) {
+    const select = elements.whatsappProject;
+    if (companyId) {
+      ensureWhatsappProjectForCompany(companyId);
+      const projects = getProjectsForCompany(companyId);
+      if (
+        !state.importJob.projectId ||
+        !projects.some((project) => project.id === state.importJob.projectId)
+      ) {
+        state.importJob.projectId = resolveDefaultWhatsappProject(companyId);
+      }
+      select.replaceChildren(
+        ...projects.map((project) => {
+          const option = document.createElement("option");
+          option.value = project.id;
+          option.textContent = project.name;
+          return option;
+        }),
+      );
+      select.disabled = status === "processing" || !projects.length;
+      if (
+        state.importJob.projectId &&
+        projects.some((project) => project.id === state.importJob.projectId)
+      ) {
+        select.value = state.importJob.projectId;
+      } else if (projects.length) {
+        select.value = projects[0].id;
+        state.importJob.projectId = projects[0].id;
+      }
+    } else {
+      select.replaceChildren();
+      select.disabled = true;
+    }
   }
   if (elements.whatsappFile) {
     elements.whatsappFile.disabled = status === "processing";
@@ -5495,6 +5571,16 @@ const handleWhatsappFileChange = (event) => {
   renderWhatsappImport();
 };
 
+const handleWhatsappProjectChange = (event) => {
+  const value = event.target?.value?.trim();
+  const companyId = state.importJob.companyId;
+  state.importJob.projectId = value || null;
+  if (companyId && value) {
+    state.companyRecents[companyId] = value;
+  }
+  renderWhatsappImport();
+};
+
 const processWhatsappImport = async () => {
   const file = state.importJob.file;
   if (!file) {
@@ -5527,16 +5613,22 @@ const processWhatsappImport = async () => {
     .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
   if (!filtered.length) {
+    const rangeLabel = formatDateRange(windowStart, new Date());
     const summary = [
       lastProcessedISO
         ? `No new messages since ${new Date(lastProcessedISO).toLocaleString()}`
-        : "No recent messages found in the last 30 days"
+        : "No recent messages found in the last 30 days",
     ];
     summary.push(`Model: ${selectedModel} (${WHATSAPP_DEFAULT_PROVIDER})`);
+    if (rangeLabel) {
+      summary.unshift(`Window: ${rangeLabel}`);
+    }
+    summary.push(`Company: ${company.name}`);
+    summary.push(`Project: ${project.name}`);
     state.importJob.model = selectedModel;
     state.importJob.provider = WHATSAPP_DEFAULT_PROVIDER;
     state.importJob.stats = {
-      range: formatDateRange(windowStart, new Date()),
+      range: rangeLabel,
       summary,
     };
     renderWhatsappImport();
@@ -5630,15 +5722,22 @@ const processWhatsappImport = async () => {
 
   state.importJob.model = effectiveModel;
   state.importJob.provider = effectiveProvider;
+  const importRange = formatDateRange(earliestTimestamp, latestTimestamp);
+  const summaryLines = summariseImportStats({
+    chatName,
+    messageCount: filtered.length,
+    taskCount: createdTasks.length,
+    model: effectiveModel,
+    provider: effectiveProvider,
+  });
+  if (importRange) {
+    summaryLines.unshift(`Window: ${importRange}`);
+  }
+  summaryLines.push(`Company: ${company.name}`);
+  summaryLines.push(`Project: ${project.name}`);
   state.importJob.stats = {
-    range: formatDateRange(earliestTimestamp, latestTimestamp),
-    summary: summariseImportStats({
-      chatName,
-      messageCount: filtered.length,
-      taskCount: createdTasks.length,
-      model: effectiveModel,
-      provider: effectiveProvider,
-    }),
+    range: importRange,
+    summary: summaryLines,
   };
   renderWhatsappImport();
 
@@ -5976,6 +6075,7 @@ const registerEventListeners = () => {
   elements.importWhatsapp?.addEventListener("click", openWhatsappDialog);
   elements.whatsappForm?.addEventListener("submit", handleWhatsappSubmit);
   elements.whatsappModel?.addEventListener("change", handleWhatsappModelChange);
+  elements.whatsappProject?.addEventListener("change", handleWhatsappProjectChange);
   elements.whatsappForm?.addEventListener("click", handleWhatsappDialogClick);
   elements.whatsappFile?.addEventListener("change", handleWhatsappFileChange);
   elements.whatsappDialog?.addEventListener("cancel", (event) => {
