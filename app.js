@@ -14,13 +14,13 @@ const STORAGE_KEYS = {
   imports: "synergygrid.todoist.imports.v1",
 };
 
-const GEMINI_MODEL = import.meta.env.VITE_GEMINI_MODEL || "gemini-1.5-flash";
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
+const OPENROUTER_MODEL = import.meta.env.VITE_OPENROUTER_MODEL || "openai/gpt-4o-mini";
+const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY || "";
 const WHATSAPP_LOOKBACK_DAYS = Number.parseInt(import.meta.env.VITE_WHATSAPP_LOOKBACK_DAYS ?? "30", 10);
 const WHATSAPP_COMPANY_NAME = import.meta.env.VITE_WHATSAPP_COMPANY_NAME || "";
 const WHATSAPP_PROJECT_NAME = import.meta.env.VITE_WHATSAPP_PROJECT_NAME || "WhatsApp Tasks";
 const WHATSAPP_SECTION_NAME = import.meta.env.VITE_WHATSAPP_SECTION_NAME || "WhatsApp Tasks";
-const WHATSAPP_DEFAULT_ENDPOINT = (import.meta.env.VITE_WHATSAPP_ENDPOINT || "v1").toLowerCase() === "v1beta" ? "v1beta" : "v1";
+const WHATSAPP_DEFAULT_PROVIDER = "openrouter";
 const MAX_WHATSAPP_LINES = Number.parseInt(import.meta.env.VITE_WHATSAPP_MAX_LINES ?? "2000", 10);
 const WHATSAPP_LOG_SHEET_ID = import.meta.env.VITE_WHATSAPP_LOG_SHEET_ID || "";
 
@@ -107,16 +107,19 @@ const DEFAULT_USERGUIDE = [
   "- Click Add Task for a quick capture or open any task row to edit the full detail dialog.",
   "- Description fields start at three lines and expand automatically as you type.",
   "- Task cards surface the first three lines of notes plus assignee, action items, and due dates at a glance.",
-  "- Use the Mark completed / Restore control inside the task dialog to switch status.",
+  "- Use the Mark completed / Restore control inside the task dialog to switch status.",
+
   "- Closing the task window, clicking outside, or pressing Save all capture your changes automatically.",
   "### Meetings",
   "- Use the Meeting quick action to log attendees, meeting type, links, notes and follow-up items.",
   "- Action items appear as an interactive checklist. Paste multiple lines to create a list automatically and tick entries off as work lands.",
-  "- Meetings surface under the project overview so you can monitor follow-ups without leaving the overview tab.",
+  "- Meetings surface under the project overview so you can monitor follow-ups without leaving the overview tab.",
+
   "- Mark meetings complete from the dialog header and any changes are auto-saved when you close.",
   "### Emails",
   "- The Email quick action tracks important threads with status, notes and supporting links.",
-  "- Notes resize with the content and remember the height you prefer for long summaries.",
+  "- Notes resize with the content and remember the height you prefer for long summaries.",
+
   "- Mark emails complete straight from the header; closing the window auto-saves edits too.",
   "## Finding context",
   "- The global search provides live suggestions; selecting a result jumps to the correct company/project and opens the task dialog.",
@@ -136,17 +139,28 @@ const DEFAULT_USERGUIDE = [
   "- Keep entries concise but complete so teammates can follow the latest workflow without additional training.",
 ];
 
-const USERGUIDE_LATEST_ENTRIES = [
-  "- Task cards surface the first three lines of notes plus assignee, action items, and due dates at a glance.",
-  "- Use the Mark completed / Restore control inside the task dialog to switch status.",
-  "- Closing any task, meeting, or email dialog now auto-saves your edits.",
-  "- Meeting and Email editors include Mark completed toggles so you can finish work without leaving the dialog.",
-  "- Settings shows members and departments as editable inline lists for quick updates.",
-  "- Every task type can be dragged between sections on the board view.",
-  "## Recent improvements",
-  "- Project settings open in a dedicated dialog so you can rename, reassign, or delete with confirmation.",
-  "- Meeting and Email quick actions sit on their own row in the project picker for easier tapping.",
-  "- Completed tasks highlight a Restore button in the editor, and search jumps now spotlight the matching card.",
+const USERGUIDE_LATEST_ENTRIES = [
+
+  "- Task cards surface the first three lines of notes plus assignee, action items, and due dates at a glance.",
+
+  "- Use the Mark completed / Restore control inside the task dialog to switch status.",
+
+  "- Closing any task, meeting, or email dialog now auto-saves your edits.",
+
+  "- Meeting and Email editors include Mark completed toggles so you can finish work without leaving the dialog.",
+
+  "- Settings shows members and departments as editable inline lists for quick updates.",
+
+  "- Every task type can be dragged between sections on the board view.",
+
+  "## Recent improvements",
+
+  "- Project settings open in a dedicated dialog so you can rename, reassign, or delete with confirmation.",
+
+  "- Meeting and Email quick actions sit on their own row in the project picker for easier tapping.",
+
+  "- Completed tasks highlight a Restore button in the editor, and search jumps now spotlight the matching card.",
+
 ];
 
 const LEGACY_USERGUIDE_V1 = [
@@ -207,8 +221,8 @@ const state = {
     file: null,
     status: "idle",
     error: "",
-    model: GEMINI_MODEL,
-    endpoint: WHATSAPP_DEFAULT_ENDPOINT,
+    model: OPENROUTER_MODEL,
+    provider: WHATSAPP_DEFAULT_PROVIDER,
     stats: null,
     companyId: DEFAULT_COMPANY.id,
   },
@@ -323,7 +337,6 @@ const elements = {
   whatsappSummary: document.querySelector("[data-whatsapp-summary]"),
   whatsappError: document.getElementById("whatsappError"),
   whatsappModel: document.getElementById("whatsappModel"),
-  whatsappEndpoint: document.getElementById("whatsappEndpoint"),
 };
 
 
@@ -5084,277 +5097,123 @@ const ensureWhatsappLookbackWindow = () => {
   return WHATSAPP_LOOKBACK_DAYS;
 };
 
-const parseGeminiJson = (payload) => {
+const parseActionItemsJson = (payload) => {
   if (Array.isArray(payload)) return payload;
   if (payload && Array.isArray(payload.items)) return payload.items;
   if (payload && Array.isArray(payload.actions)) return payload.actions;
   return [];
 };
 
-const callGeminiForActionItems = async ({
+const callOpenRouterForActionItems = async ({
   chatName,
   transcript,
   allowedAssignees,
-  model = GEMINI_MODEL,
-  endpoint = "v1",
+  model = OPENROUTER_MODEL,
 }) => {
-  if (!GEMINI_API_KEY) {
-    throw new Error("Set VITE_GEMINI_API_KEY to enable WhatsApp imports.");
+  if (!OPENROUTER_API_KEY) {
+    throw new Error("Set VITE_OPENROUTER_API_KEY to enable WhatsApp imports.");
   }
-  if (!transcript) return { items: [], endpointUsed: endpoint, modelUsed: model };
-
-  const normaliseModel = (value) => {
-    if (!value || typeof value !== "string") return "";
-    return value.replace(/^models\//i, "").replace(/:generateContent$/i, "").trim();
-  };
-  const isStructuredModel = (value) => /^gemini-2\./i.test(value);
+  if (!transcript) {
+    return { items: [], providerUsed: WHATSAPP_DEFAULT_PROVIDER, modelUsed: model };
+  }
 
   const allowedNames = allowedAssignees.map((entry) => entry.name).filter(Boolean);
-  const instructions = [
-    "You are an AI assistant analysing WhatsApp group conversations to extract actionable tasks.",
-    `Chat name: ${chatName}`,
-    "The transcript you receive already begins at the earliest message that must be processed (last recorded import or the 30-day window). Ignore anything before the first line; read every remaining message in order.",
-    "Each transcript line has the form: [index] ISO_TIMESTAMP | sender: message",
-    "",
-    "Extraction rules",
-    "• Only capture genuine action items: explicit requests, commitments, delegations, or clear plans that describe what must happen. Skip greetings, confirmations, vague intent, or questions unless they contain a concrete next step.",
-    "• Treat names consistently. Remove @ prefixes, prefer real names whenever they appear anywhere in the chat, and only fall back to a phone number (wrapped in single quotes) when no name exists at all.",
-    "• If several people are asked to do something, list them all in the assignee field. If nobody is clearly responsible, set assignee to null (do not invent one).",
-    "• Convert any relative timing (“tomorrow”, “Friday”, “next week”) into an absolute date in US Eastern Time (America/New_York). If no timing is given, return null.",
-    '• Assign one of these priorities exactly: "critical", "very-high", "high", "medium", "low", "optional".',
-    "  – critical: emergency, immediate business impact, or language such as “ASAP / now”.",
-    "  – very-high: explicitly urgent or blocking core work.",
-    "  – high: specific short-term deadline (e.g., due in a few days) or clearly important follow-up.",
-    "  – medium: normal follow-up with implied timing but not urgent.",
-    "  – low: nice-to-have or loosely timed.",
-    "  – optional: discretionary or informational items that the owner may choose to do.",
-    "• Use the ISO timestamp from the triggering message verbatim for sourceTimestamp, and the speaker’s name for sourceSender.",
-    "",
-    `You also receive a list of allowed assignees: ${allowedNames.length ? allowedNames.join(", ") : "(none)"}. Prefer those names when they match the conversation.`,
-    "",
-    "Output format",
-    "Return a JSON array (no code fences). Each object must contain exactly:",
-    "",
-    "{",
-    '  "title": "Short imperative task summary",',
-    '  "description": "One or two sentences capturing context, commitments, and next steps with names",',
-    '  "assignee": "Responsible person name or null",',
-    '  "dueDate": "YYYY-MM-DD if a deadline exists, otherwise null",',
-    '  "priority": "critical|very-high|high|medium|low|optional",',
-    '  "sourceTimestamp": "ISO timestamp from the message",',
-    '  "sourceSender": "Name of the message author"',
-    "}",
-    "",
-    "If you find no qualifying action items, return [].",
-  ].join("\n");
+  const instructions = `
+You are an AI assistant analysing WhatsApp group conversations to extract actionable tasks.
+Chat name: ${chatName}
+The transcript you receive already begins at the earliest message that must be processed (last recorded import or the 30-day window). Ignore anything before the first line; read every remaining message in order.
+Each transcript line has the form: [index] ISO_TIMESTAMP | sender: message
 
-  const schema = {
-    type: "object",
-    properties: {
-      items: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            title: { type: "string" },
-            description: { type: "string" },
-            assignee: { type: ["string", "null"] },
-            dueDate: { type: ["string", "null"] },
-            priority: {
-              type: "string",
-              enum: ["critical", "very-high", "high", "medium", "low", "optional"],
-            },
-            sourceTimestamp: { type: "string" },
-            sourceSender: { type: "string" },
-          },
-          required: ["title", "description", "assignee", "dueDate", "priority", "sourceTimestamp", "sourceSender"],
-        },
-      },
-    },
-    required: ["items"],
-  };
+Extraction rules
+- Only capture genuine action items: explicit requests, commitments, delegations, or clear plans that describe what must happen. Skip greetings, confirmations, vague intent, or questions unless they contain a concrete next step.
+- Treat names consistently. Remove @ prefixes, prefer real names whenever they appear anywhere in the chat, and only fall back to a phone number (wrapped in single quotes) when no name exists at all.
+- If several people are responsible, list them all in the assignee field. If nobody is clearly responsible, set assignee to null (do not invent one).
+- Convert any relative timing (tomorrow, Friday, next week) into an absolute date in America/New_York. If no timing is given, return null.
+- Assign one of these priorities exactly: "critical", "very-high", "high", "medium", "low", "optional".
+- Use the ISO timestamp from the triggering message for sourceTimestamp, and the speaker's name for sourceSender.
 
-  const contents = [
-    {
-      role: "user",
-      parts: [
-        { text: instructions },
-        { text: `Transcript:\n${transcript}` },
-      ],
-    },
+Allowed assignees: ${allowedNames.length ? allowedNames.join(", ") : "(none)"}. Prefer those names when they match the conversation.
+
+Output format
+Return a JSON array (no code fences). Each object must contain exactly:
+
+{
+  "title": "Short imperative task summary",
+  "description": "One or two sentences capturing context, commitments, and next steps with names",
+  "assignee": "Responsible person name or null",
+  "dueDate": "YYYY-MM-DD if a deadline exists, otherwise null",
+  "priority": "critical|very-high|high|medium|low|optional",
+  "sourceTimestamp": "ISO timestamp from the message",
+  "sourceSender": "Name of the message author"
+}
+
+If you find no qualifying action items, return [].
+`.trim();
+
+  const messages = [
+    { role: "system", content: instructions },
+    { role: "user", content: `Transcript:\n${transcript}` },
   ];
 
-  const buildRequestBody = (targetModel, targetEndpoint) => {
-    const body = {
-      contents,
-      generationConfig: {
-        temperature: 0.2,
-        topK: 32,
-      },
-    };
-    if (isStructuredModel(targetModel)) {
-      body.tools = [
-        {
-          functionDeclarations: [
-            {
-              name: "store_action_items",
-              description: "Return the list of action items extracted from the WhatsApp transcript.",
-              parameters: schema,
-            },
-          ],
-        },
-      ];
-      body.toolConfig = { functionCall: { name: "store_action_items" } };
-    }
-    return body;
-  };
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+      "HTTP-Referer": typeof window !== 'undefined' ? window.location.origin : 'https://openrouter.ai',
+      "X-Title": "Synergy Tasks",
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature: 0.2,
+      max_tokens: 1200,
+      response_format: { type: "json_object" },
+    }),
+  });
 
-  const runRequest = async (targetEndpoint, targetModel) => {
-    const requestBody = buildRequestBody(targetModel, targetEndpoint);
-    const url = `https://generativelanguage.googleapis.com/${targetEndpoint}/models/${encodeURIComponent(targetModel)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(requestBody),
-    });
-    const payload = await response.json();
-    return { response, payload };
-  };
-
-  const isRetryableModelError = (response, payload) => {
-    if (!response || response.ok) return false;
-    if (response.status === 404) return true;
-    const message = (payload?.error?.message || "").toLowerCase();
-    return message.includes("not found") || message.includes("not supported");
-  };
-
-  const initialEndpoint = endpoint === "v1beta" ? "v1beta" : "v1";
-  const endpointCandidates = initialEndpoint === "v1" ? ["v1", "v1beta"] : ["v1beta", "v1"];
-
-  const modelCandidates = (() => {
-    const candidates = [];
-    const seen = new Set();
-    const addCandidate = (value) => {
-      const trimmed = (value || "").trim();
-      if (!trimmed || seen.has(trimmed)) return;
-      const cleaned = normaliseModel(trimmed);
-      if (!cleaned || seen.has(cleaned)) return;
-      seen.add(cleaned);
-      candidates.push(cleaned);
-    };
-    addCandidate(model);
-    if (/-latest$/i.test(model)) {
-      addCandidate(model.replace(/-latest$/i, ""));
-    }
-    if (/-\d+$/i.test(model)) {
-      addCandidate(model.replace(/-\d+$/i, ""));
-    }
-    if (/-\d+[a-z]+$/i.test(model)) {
-      addCandidate(model.replace(/-\d+[a-z]+$/i, ""));
-    }
-    if (/-preview$/i.test(model) || /-exp$/i.test(model)) {
-      addCandidate(model.replace(/-(preview|exp)$/i, ""));
-    }
-    return candidates;
-  })();
-
-  let lastError = null;
-
-  for (const modelCandidate of modelCandidates) {
-    for (const endpointCandidate of endpointCandidates) {
-      if (isStructuredModel(modelCandidate) && endpointCandidate !== "v1beta") {
-        continue;
-      }
-      const { response, payload } = await runRequest(endpointCandidate, modelCandidate);
-      const message = payload?.error?.message || "Gemini API request failed.";
-      if (response.ok) {
-        const candidate = payload?.candidates?.[0];
-        const parts = candidate?.content?.parts ?? [];
-        if (isStructuredModel(modelCandidate)) {
-          const functionPart = parts.find((part) => part?.functionCall);
-          if (!functionPart?.functionCall) {
-            console.error("Gemini response missing functionCall part", payload);
-            throw new Error("Gemini returned an unexpected response.");
-          }
-          const args = functionPart.functionCall.args ?? {};
-          let rawItems;
-          if (Array.isArray(args)) {
-            rawItems = args;
-          } else if (Array.isArray(args?.items)) {
-            rawItems = args.items;
-          } else if (typeof args?.items === "string") {
-            try {
-              rawItems = JSON.parse(args.items);
-            } catch (error) {
-              console.error("Failed to parse Gemini function payload", error, args.items);
-              throw new Error("Gemini returned an unexpected response.");
-            }
-          } else if (typeof args === "string") {
-            try {
-              const parsed = JSON.parse(args);
-              rawItems = parsed?.items ?? parsed;
-            } catch (error) {
-              console.error("Failed to parse Gemini function payload", error, args);
-              throw new Error("Gemini returned an unexpected response.");
-            }
-          } else if (args && typeof args === "object") {
-            rawItems = args.items ?? args;
-          }
-          return {
-            items: parseGeminiJson(rawItems),
-            endpointUsed: endpointCandidate,
-            modelUsed: modelCandidate,
-          };
-        }
-
-        const partText =
-          candidate?.content?.parts?.[0]?.text ??
-          candidate?.content?.[0]?.text ??
-          (candidate?.content?.parts ?? [])
-            .map((part) => part.text)
-            .filter(Boolean)
-            .join("\n");
-        if (!partText) {
-          return {
-            items: [],
-            endpointUsed: endpointCandidate,
-            modelUsed: modelCandidate,
-          };
-        }
-
-        try {
-          const parsed = JSON.parse(partText);
-          return {
-            items: parseGeminiJson(parsed),
-            endpointUsed: endpointCandidate,
-            modelUsed: modelCandidate,
-          };
-        } catch (error) {
-          console.error("Failed to parse Gemini response", error, partText);
-          throw new Error("Gemini returned an unexpected response.");
-        }
-      }
-
-      if (!isRetryableModelError(response, payload)) {
-        throw new Error(message);
-      }
-
-      lastError = message;
-    }
+  const payload = await response.json();
+  if (!response.ok) {
+    const message = payload?.error?.message || "OpenRouter request failed.";
+    throw new Error(message);
   }
 
-  throw new Error(lastError || "Gemini API request failed.");
+  let content = payload?.choices?.[0]?.message?.content ?? "";
+  content = content.trim();
+  if (!content) {
+    return {
+      items: [],
+      providerUsed: payload?.provider ?? WHATSAPP_DEFAULT_PROVIDER,
+      modelUsed: payload?.model ?? model,
+    };
+  }
+
+  if (/^```/i.test(content)) {
+    content = content.replace(/^```(?:json)?\s*/i, "").replace(/```$/i, "").trim();
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(content);
+  } catch (error) {
+    console.error("Failed to parse OpenRouter response", error, content);
+    throw new Error("OpenRouter returned an unexpected response.");
+  }
+
+  return {
+    items: parseActionItemsJson(parsed),
+    providerUsed: payload?.provider ?? WHATSAPP_DEFAULT_PROVIDER,
+    modelUsed: payload?.model ?? model,
+  };
 };
 
-const summariseImportStats = ({ chatName, messageCount, taskCount, model, endpoint }) => {
+const summariseImportStats = ({ chatName, messageCount, taskCount, model, provider }) => {
   const lines = [];
   lines.push(`${messageCount} new message${messageCount === 1 ? "" : "s"} analysed`);
   lines.push(`${taskCount} action item${taskCount === 1 ? "" : "s"} created`);
   lines.push(`Source chat: ${chatName}`);
   if (model) {
-    const suffix = endpoint ? ` (${endpoint})` : "";
+    const suffix = provider ? ` (${provider})` : "";
     lines.push(`Model: ${model}${suffix}`);
   }
   return lines;
@@ -5369,8 +5228,8 @@ const logWhatsappActionsToSheet = async ({ chatName, tasks }) => {
 };
 
 const resetWhatsappImport = (companyId = state.activeCompanyId) => {
-  const model = state.importJob.model || GEMINI_MODEL;
-  const endpoint = state.importJob.endpoint || WHATSAPP_DEFAULT_ENDPOINT;
+  const model = state.importJob.model || OPENROUTER_MODEL;
+  const provider = state.importJob.provider || WHATSAPP_DEFAULT_PROVIDER;
   const previousCompanyId =
     state.importJob.companyId && state.importJob.companyId !== ALL_COMPANY_ID
       ? state.importJob.companyId
@@ -5383,7 +5242,7 @@ const resetWhatsappImport = (companyId = state.activeCompanyId) => {
     error: "",
     stats: null,
     model,
-    endpoint,
+    provider,
     companyId: candidateCompanyId ?? previousCompanyId ?? null,
   };
   if (elements.whatsappForm) {
@@ -5392,14 +5251,11 @@ const resetWhatsappImport = (companyId = state.activeCompanyId) => {
   if (elements.whatsappModel) {
     elements.whatsappModel.value = model;
   }
-  if (elements.whatsappEndpoint) {
-    elements.whatsappEndpoint.value = endpoint;
-  }
   renderWhatsappImport();
 };
 
 const renderWhatsappImport = () => {
-  const { file, status, error, stats, model, endpoint } = state.importJob;
+  const { file, status, error, stats, model } = state.importJob;
   if (elements.whatsappPreview) {
     if (stats && file) {
       elements.whatsappPreview.hidden = false;
@@ -5439,10 +5295,6 @@ const renderWhatsappImport = () => {
   if (elements.whatsappModel) {
     elements.whatsappModel.value = model;
   }
-  if (elements.whatsappEndpoint) {
-    elements.whatsappEndpoint.value = endpoint;
-  }
-
   if (elements.whatsappFile) {
     elements.whatsappFile.disabled = status === "processing";
   }
@@ -5500,9 +5352,7 @@ const processWhatsappImport = async () => {
   }
 
   const { company, project, section } = getWhatsappDestination();
-  const selectedModel = (state.importJob.model || GEMINI_MODEL).trim() || GEMINI_MODEL;
-  const selectedEndpointRaw = (state.importJob.endpoint || WHATSAPP_DEFAULT_ENDPOINT).toLowerCase();
-  const selectedEndpoint = selectedEndpointRaw === "v1beta" ? "v1beta" : "v1";
+  const selectedModel = (state.importJob.model || OPENROUTER_MODEL).trim() || OPENROUTER_MODEL;
   const { chatName, messages } = await readWhatsappExport(file);
   if (!messages.length) {
     throw new Error("No messages were found in the chat export.");
@@ -5532,10 +5382,9 @@ const processWhatsappImport = async () => {
         ? `No new messages since ${new Date(lastProcessedISO).toLocaleString()}`
         : "No recent messages found in the last 30 days"
     ];
-    const endpointLabel = selectedEndpoint ? " (" + selectedEndpoint + ")" : "";
-    summary.push(`Model: ${selectedModel}${endpointLabel}`);
+    summary.push(`Model: ${selectedModel} (${WHATSAPP_DEFAULT_PROVIDER})`);
     state.importJob.model = selectedModel;
-    state.importJob.endpoint = selectedEndpoint;
+    state.importJob.provider = WHATSAPP_DEFAULT_PROVIDER;
     state.importJob.stats = {
       range: formatDateRange(windowStart, new Date()),
       summary,
@@ -5547,14 +5396,13 @@ const processWhatsappImport = async () => {
   const limited = filtered.slice(-Math.max(10, Math.min(filtered.length, MAX_WHATSAPP_LINES || 2000)));
   const transcript = buildTranscript(limited);
   const allowedAssignees = state.members.map((member) => ({ id: member.id, name: member.name }));
-  const { items: actionItems, endpointUsed, modelUsed } = await callGeminiForActionItems({
+  const { items: actionItems, providerUsed, modelUsed } = await callOpenRouterForActionItems({
     chatName,
     transcript,
     allowedAssignees,
     model: selectedModel,
-    endpoint: selectedEndpoint,
   });
-  const effectiveEndpoint = endpointUsed || selectedEndpoint;
+  const effectiveProvider = providerUsed || WHATSAPP_DEFAULT_PROVIDER;
   const effectiveModel = modelUsed || selectedModel;
 
   const memberLookup = new Map(
@@ -5624,7 +5472,7 @@ const processWhatsappImport = async () => {
   saveImports();
 
   state.importJob.model = effectiveModel;
-  state.importJob.endpoint = effectiveEndpoint;
+  state.importJob.provider = effectiveProvider;
   state.importJob.stats = {
     range: formatDateRange(earliestTimestamp, latestTimestamp),
     summary: summariseImportStats({
@@ -5632,7 +5480,7 @@ const processWhatsappImport = async () => {
       messageCount: filtered.length,
       taskCount: createdTasks.length,
       model: effectiveModel,
-      endpoint: effectiveEndpoint,
+      provider: effectiveProvider,
     }),
   };
   renderWhatsappImport();
@@ -5671,13 +5519,7 @@ const handleWhatsappSubmit = async (event) => {
 
 const handleWhatsappModelChange = (event) => {
   const value = event.target?.value?.trim();
-  state.importJob.model = value || GEMINI_MODEL;
-  renderWhatsappImport();
-};
-
-const handleWhatsappEndpointChange = (event) => {
-  const value = (event.target?.value || "").toLowerCase();
-  state.importJob.endpoint = value === "v1beta" ? "v1beta" : "v1";
+  state.importJob.model = value || OPENROUTER_MODEL;
   renderWhatsappImport();
 };
 
@@ -5977,7 +5819,6 @@ const registerEventListeners = () => {
   elements.importWhatsapp?.addEventListener("click", openWhatsappDialog);
   elements.whatsappForm?.addEventListener("submit", handleWhatsappSubmit);
   elements.whatsappModel?.addEventListener("change", handleWhatsappModelChange);
-  elements.whatsappEndpoint?.addEventListener("change", handleWhatsappEndpointChange);
   elements.whatsappForm?.addEventListener("click", handleWhatsappDialogClick);
   elements.whatsappFile?.addEventListener("change", handleWhatsappFileChange);
   elements.whatsappDialog?.addEventListener("cancel", (event) => {
