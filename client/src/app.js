@@ -5055,6 +5055,48 @@ const normaliseDueDate = (value) => {
   return iso.slice(0, 10);
 };
 
+const EST_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+const EST_TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  hour: "numeric",
+  minute: "2-digit",
+  hour12: true,
+});
+
+const formatEstDateTime = (date) => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+  const datePart = EST_DATE_FORMATTER.format(date);
+  const timePart = EST_TIME_FORMATTER.format(date);
+  return `${datePart} at ${timePart} ET`;
+};
+
+const simplifyGroupChatName = (name = "") => {
+  if (!name) return "";
+  const stripped = name.replace(/^WhatsApp Chat with\s+/i, "").trim();
+  return stripped || name.trim();
+};
+
+const truncateExcerpt = (text = "") => {
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+  if (cleaned.length <= 280) return cleaned;
+  return `${cleaned.slice(0, 277).trimEnd()}...`;
+};
+
+const findMessageExcerpt = (messages, timestamp) => {
+  if (!(timestamp instanceof Date) || Number.isNaN(timestamp.getTime())) return "";
+  const target = timestamp.getTime();
+  const match = messages.find(
+    (entry) => entry.timestamp && Math.abs(entry.timestamp.getTime() - target) <= 1000,
+  );
+  return truncateExcerpt(match?.text ?? "");
+};
+
 const findCompanyByName = (name) => {
   if (!name || typeof name !== "string") return null;
   const target = name.trim().toLowerCase();
@@ -5184,29 +5226,29 @@ const callOpenRouterForActionItems = async ({
   }
 
   const allowedNames = allowedAssignees.map((entry) => entry.name).filter(Boolean);
-  const instructions = `
+const instructions = `
 You are an AI assistant analyzing WhatsApp group conversations for actionable tasks.
 
 Chat: ${chatName}
-Transcript lines already fall inside the allowed import window (from the stored start date through now). Read every line in order exactly as provided.
+Transcript lines already fall inside the allowed import window (from the stored start date through now). Read every message in order exactly as provided.
 
 Extraction rules
-1. Capture an action item only when someone clearly requests, commits to, or delegates concrete work. Skip pure questions, status updates, or vague intent.
+1. Capture an action item whenever someone requests, commits to, promises, or implies concrete follow-up work. Include direct asks, self-assigned tasks, reminders, and decisions that describe the next step. Skip greetings or pure status updates with no next action.
 2. Use real names wherever possible. Strip @ prefixes, and only fall back to a phone number wrapped in single quotes (e.g., '1234567890') when no name exists anywhere in the chat.
 3. If several people share responsibility, list every name in the assignee field. If nobody is clearly responsible, set assignee to null.
 4. Convert relative timing (tomorrow, Friday, next week) into absolute YYYY-MM-DD dates in America/New_York. When no timing exists, set dueDate to null.
 5. Assign priority using exactly one of: "optional", "low", "medium", "high", "very-high", "critical" based on urgency, deadlines, or consequences of delay.
-6. "description" must start with "Chat: ${chatName}" on its first line, then include one or two sentences summarizing context, commitments, and key names.
+6. The "description" field must be one or two sentences summarizing what needs to happen. Do not copy the raw chat line verbatim; keep it concise.
 
 Allowed assignees: ${allowedNames.length ? allowedNames.join(", ") : "(none)"}.
 
 Output format
-Return a pure JSON array (no code fences). If only one task exists, wrap it in an array with a single object. Example:
+Return a pure JSON array (no code fences). Always return an array, even if it contains only one task. Example:
 
 [
   {
     "title": "Example task",
-    "description": "Chat: ${chatName} ...",
+    "description": "Summarize the decision and next step in one or two sentences.",
     "assignee": "Name",
     "dueDate": "2025-10-31",
     "priority": "medium",
@@ -5219,7 +5261,7 @@ Each object must contain exactly:
 
 {
   "title": "Short imperative task summary",
-  "description": "Chat line plus 1–2 sentences of context",
+  "description": "One or two sentences summarizing the required work",
   "assignee": "Comma-separated real names or null",
   "dueDate": "YYYY-MM-DD or null",
   "priority": "optional|low|medium|high|very-high|critical",
@@ -5513,15 +5555,20 @@ const processWhatsappImport = async () => {
     const priority = normalisePriority(item.priority);
     const sender = typeof item.sourceSender === "string" ? item.sourceSender.trim() : "";
     const detail = typeof item.description === "string" ? item.description.trim() : "";
-
-    const chatLabel = chatName ? `Chat: ${chatName}` : "";
-    const messageSummary = sender
-      ? `Source: ${sender} in ${chatName || "WhatsApp"}`
-      : `Source chat: ${chatName || "WhatsApp"}`;
-    const descriptionSegments = [chatLabel, detail, messageSummary];
-    if (sourceTimestamp && !Number.isNaN(sourceTimestamp.getTime())) {
-      descriptionSegments.push(`Mentioned on ${sourceTimestamp.toLocaleString()}`);
-    }
+    const summaryLine = detail || title;
+    const excerptText = findMessageExcerpt(limited, sourceTimestamp);
+    const excerptLine = excerptText ? `Excerpt: "${excerptText}"` : "";
+    const senderTimestampLabel = formatEstDateTime(sourceTimestamp);
+    const senderLine =
+      sender && senderTimestampLabel
+        ? `Sender: ${sender} · ${senderTimestampLabel}`
+        : sender
+          ? `Sender: ${sender}`
+          : senderTimestampLabel
+            ? `Sender: ${senderTimestampLabel}`
+            : "";
+    const groupLine = chatName ? `Group chat: ${simplifyGroupChatName(chatName)}` : "";
+    const descriptionSegments = [summaryLine, excerptLine, senderLine, groupLine];
 
     const task = addTask({
       title,
