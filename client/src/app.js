@@ -5153,10 +5153,20 @@ const ensureWhatsappLookbackWindow = () => {
   return WHATSAPP_LOOKBACK_DAYS;
 };
 
+const looksLikeTask = (candidate) =>
+  candidate &&
+  typeof candidate === "object" &&
+  ("title" in candidate || "description" in candidate || "sourceTimestamp" in candidate);
+
 const parseActionItemsJson = (payload) => {
   if (Array.isArray(payload)) return payload;
-  if (payload && Array.isArray(payload.items)) return payload.items;
-  if (payload && Array.isArray(payload.actions)) return payload.actions;
+  if (looksLikeTask(payload)) return [payload];
+  if (payload && typeof payload === "object") {
+    if (Array.isArray(payload.items)) return payload.items;
+    if (looksLikeTask(payload.items)) return [payload.items];
+    if (Array.isArray(payload.actions)) return payload.actions;
+    if (looksLikeTask(payload.actions)) return [payload.actions];
+  }
   return [];
 };
 
@@ -5191,7 +5201,21 @@ Extraction rules
 Allowed assignees: ${allowedNames.length ? allowedNames.join(", ") : "(none)"}.
 
 Output format
-Return a pure JSON array (no code fences). Each object must contain exactly:
+Return a pure JSON array (no code fences). If only one task exists, wrap it in an array with a single object. Example:
+
+[
+  {
+    "title": "Example task",
+    "description": "Chat: ${chatName} ...",
+    "assignee": "Name",
+    "dueDate": "2025-10-31",
+    "priority": "medium",
+    "sourceTimestamp": "2025-10-31T12:00:00.000Z",
+    "sourceSender": "Jordan Taylor"
+  }
+]
+
+Each object must contain exactly:
 
 {
   "title": "Short imperative task summary",
