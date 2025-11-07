@@ -5175,35 +5175,35 @@ const callOpenRouterForActionItems = async ({
 
   const allowedNames = allowedAssignees.map((entry) => entry.name).filter(Boolean);
   const instructions = `
-You are an AI assistant analysing WhatsApp group conversations to extract actionable tasks.
-Chat name: ${chatName}
-The transcript you receive already begins at the earliest message that must be processed (last recorded import or the 30-day window). Ignore anything before the first line; read every remaining message in order.
-Each transcript line has the form: [index] ISO_TIMESTAMP | sender: message
+You are an AI assistant analyzing WhatsApp group conversations for actionable tasks.
+
+Chat: ${chatName}
+Transcript lines already fall inside the allowed import window (from the stored start date through now). Read every line in order exactly as provided.
 
 Extraction rules
-- Only capture genuine action items: explicit requests, commitments, delegations, or clear plans that describe what must happen. Skip greetings, confirmations, vague intent, or questions unless they contain a concrete next step.
-- Treat names consistently. Remove @ prefixes, prefer real names whenever they appear anywhere in the chat, and only fall back to a phone number (wrapped in single quotes) when no name exists at all.
-- If several people are responsible, list them all in the assignee field. If nobody is clearly responsible, set assignee to null (do not invent one).
-- Convert any relative timing (tomorrow, Friday, next week) into an absolute date in America/New_York. If no timing is given, return null.
-- Assign one of these priorities exactly: "critical", "very-high", "high", "medium", "low", "optional".
-- Use the ISO timestamp from the triggering message verbatim for sourceTimestamp, and the speaker's name for sourceSender.
+1. Capture an action item only when someone clearly requests, commits to, or delegates concrete work. Skip pure questions, status updates, or vague intent.
+2. Use real names wherever possible. Strip @ prefixes, and only fall back to a phone number wrapped in single quotes (e.g., '1234567890') when no name exists anywhere in the chat.
+3. If several people share responsibility, list every name in the assignee field. If nobody is clearly responsible, set assignee to null.
+4. Convert relative timing (tomorrow, Friday, next week) into absolute YYYY-MM-DD dates in America/New_York. When no timing exists, set dueDate to null.
+5. Assign priority using exactly one of: "optional", "low", "medium", "high", "very-high", "critical" based on urgency, deadlines, or consequences of delay.
+6. "description" must start with "Chat: ${chatName}" on its first line, then include one or two sentences summarizing context, commitments, and key names.
 
-Allowed assignees: ${allowedNames.length ? allowedNames.join(", ") : "(none)"}. Prefer those names when they match the conversation.
+Allowed assignees: ${allowedNames.length ? allowedNames.join(", ") : "(none)"}.
 
 Output format
-Return a JSON array (no code fences). Each object must contain exactly:
+Return a pure JSON array (no code fences). Each object must contain exactly:
 
 {
   "title": "Short imperative task summary",
-  "description": "One or two sentences capturing context, commitments, and next steps with names",
-  "assignee": "Responsible person name or null",
-  "dueDate": "YYYY-MM-DD if a deadline exists, otherwise null",
-  "priority": "critical|very-high|high|medium|low|optional",
-  "sourceTimestamp": "ISO timestamp from the message",
+  "description": "Chat line plus 1–2 sentences of context",
+  "assignee": "Comma-separated real names or null",
+  "dueDate": "YYYY-MM-DD or null",
+  "priority": "optional|low|medium|high|very-high|critical",
+  "sourceTimestamp": "ISO timestamp from the triggering message",
   "sourceSender": "Name of the message author"
 }
 
-If you find no qualifying action items, return [].
+If no qualifying action items exist, return [].
 `.trim();
 
   const messages = [
