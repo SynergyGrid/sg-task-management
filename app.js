@@ -5148,6 +5148,8 @@ const parseActionItemsJson = (payload) => {
   if (Array.isArray(payload)) return payload;
   if (looksLikeTask(payload)) return [payload];
   if (payload && typeof payload === "object") {
+    if (Array.isArray(payload.tasks)) return payload.tasks;
+    if (looksLikeTask(payload.tasks)) return [payload.tasks];
     if (Array.isArray(payload.items)) return payload.items;
     if (looksLikeTask(payload.items)) return [payload.items];
     if (Array.isArray(payload.actions)) return payload.actions;
@@ -5492,8 +5494,10 @@ const processWhatsappImport = async () => {
         ? sourceTimestamp.toISOString()
         : limited[limited.length - 1].timestamp.toISOString();
 
-    const assigneeName = typeof item.assignee === "string" ? item.assignee.trim().toLowerCase() : "";
-    const assigneeId = assigneeName && memberLookup.has(assigneeName) ? memberLookup.get(assigneeName) : "";
+    const assigneeRaw = typeof item.assignee === "string" ? item.assignee.trim() : "";
+    const assigneeValue = assigneeRaw && assigneeRaw.toLowerCase() !== "null" ? assigneeRaw : "";
+    const assigneeKey = assigneeValue ? assigneeValue.toLowerCase() : "";
+    const assigneeId = assigneeKey && memberLookup.has(assigneeKey) ? memberLookup.get(assigneeKey) : "";
 
     const dueDate = normaliseDueDate(item.dueDate);
     const priority = normalisePriority(item.priority);
