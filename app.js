@@ -5144,6 +5144,34 @@ const looksLikeTask = (candidate) =>
   typeof candidate === "object" &&
   ("title" in candidate || "description" in candidate || "sourceTimestamp" in candidate);
 
+const safeParseJson = (rawText) => {
+  const text = typeof rawText === "string" ? rawText.trim() : "";
+  if (!text) return null;
+  const attempt = (value) => {
+    if (!value) return null;
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  };
+  let parsed = attempt(text);
+  if (parsed) return parsed;
+  const firstCurly = text.indexOf("{");
+  const lastCurly = text.lastIndexOf("}");
+  if (firstCurly !== -1 && lastCurly > firstCurly) {
+    parsed = attempt(text.slice(firstCurly, lastCurly + 1));
+    if (parsed) return parsed;
+  }
+  const firstSquare = text.indexOf("[");
+  const lastSquare = text.lastIndexOf("]");
+  if (firstSquare !== -1 && lastSquare > firstSquare) {
+    parsed = attempt(text.slice(firstSquare, lastSquare + 1));
+    if (parsed) return parsed;
+  }
+  return null;
+};
+
 const parseActionItemsJson = (payload) => {
   if (Array.isArray(payload)) return payload;
   if (looksLikeTask(payload)) return [payload];
@@ -5260,11 +5288,9 @@ If no qualifying action items exist, return [].
     content = content.replace(/^```(?:json)?\s*/i, "").replace(/```$/i, "").trim();
   }
 
-  let parsed;
-  try {
-    parsed = JSON.parse(content);
-  } catch (error) {
-    console.error("Failed to parse OpenRouter response", error, content);
+  const parsed = safeParseJson(content);
+  if (!parsed) {
+    console.error("Failed to parse OpenRouter response", content);
     throw new Error("OpenRouter returned an unexpected response.");
   }
 
