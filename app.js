@@ -254,6 +254,7 @@ const elements = {
   quickAddAssignee: document.querySelector('#quickAddForm select[name="assignee"]'),
   quickAddAttachments: document.querySelector('#quickAddForm input[name="attachments"]'),
   quickAddAttachmentList: document.querySelector('#quickAddForm [data-attachment-list]'),
+  quickAddLinksList: document.querySelector("[data-quick-links]"),
   quickAddCancel: document.querySelector('#quickAddForm [data-action="cancel"]'),
   quickAddError: document.querySelector(".quick-add-error"),
   toggleQuickAdd: document.getElementById("toggleQuickAdd"),
@@ -283,6 +284,7 @@ const elements = {
   taskDialogToggle: document.querySelector('[data-action="toggle-task-completion"]'),
   dialogAttachmentsInput: document.querySelector('#dialogForm input[name="attachments"]'),
   dialogAttachmentList: document.querySelector('#dialogForm [data-dialog-attachment-list]'),
+  dialogLinksList: document.querySelector("[data-dialog-links]"),
   taskTemplate: document.getElementById("taskItemTemplate"),
   activeTasksMetric: document.getElementById("active-tasks"),
   activityFeed: document.getElementById("activity-feed"),
@@ -4057,6 +4059,7 @@ const handleQuickAddSubmit = async (event) => {
 
   const projectId = data.get("project") || "inbox";
   const sectionId = data.get("section") || getDefaultSectionId(projectId);
+  const links = collectLinks(elements.quickAddLinksList);
   const attachments = elements.quickAddAttachments ? await readFilesAsData(elements.quickAddAttachments.files) : [];
 
   try {
@@ -4070,6 +4073,7 @@ const handleQuickAddSubmit = async (event) => {
       departmentId: data.get("department") || "",
       assigneeId: data.get("assignee") || "",
       attachments,
+      links,
     });
 
     resetQuickAddForm();
@@ -4077,6 +4081,27 @@ const handleQuickAddSubmit = async (event) => {
   } catch (error) {
     console.error("Failed to create task.", error);
     elements.quickAddError.textContent = "Unable to create task. Please try again.";
+  }
+};
+
+const handleQuickAddClick = (event) => {
+  const action = event.target.dataset.action;
+  if (action === "quick-add-link") {
+    event.preventDefault();
+    if (elements.quickAddLinksList) {
+      createLinkRow(elements.quickAddLinksList);
+    }
+    return;
+  }
+  if (action === "remove-link") {
+    const row = event.target.closest('[data-link-row]');
+    if (row && elements.quickAddLinksList?.contains(row)) {
+      event.preventDefault();
+      row.remove();
+      if (elements.quickAddLinksList.childElementCount === 0) {
+        createLinkRow(elements.quickAddLinksList);
+      }
+    }
   }
 };
 
@@ -4094,6 +4119,7 @@ const resetQuickAddForm = () => {
   elements.quickAddError.textContent = "";
   if (elements.quickAddAttachmentList) elements.quickAddAttachmentList.replaceChildren();
   if (elements.quickAddAttachments) elements.quickAddAttachments.value = "";
+  resetLinkList(elements.quickAddLinksList);
   syncQuickAddSelectors();
   const descriptionField = elements.quickAddForm?.elements?.description;
   if (descriptionField) {
@@ -4286,6 +4312,7 @@ const openTaskDialog = (taskId) => {
   if (elements.dialogAttachmentsInput) {
     elements.dialogAttachmentsInput.value = "";
   }
+  resetLinkList(elements.dialogLinksList, Array.isArray(task?.links) ? task.links : []);
 
   updateTaskDialogCompletionState(task);
 
@@ -4305,6 +4332,7 @@ const closeTaskDialog = () => {
   if (elements.dialogAttachmentsInput) {
     elements.dialogAttachmentsInput.value = "";
   }
+  resetLinkList(elements.dialogLinksList);
   if (elements.dialogForm?.elements?.description) {
     applySavedTextareaHeight(elements.dialogForm.elements.description);
   }
@@ -4384,6 +4412,7 @@ const commitTaskDialogChanges = () => {
       departmentId: data.get("department") || "",
       assigneeId: data.get("assignee") || "",
       attachments: cloneAttachments(state.dialogAttachmentDraft),
+      links,
       completed: elements.dialogForm.completed.checked,
     });
     return true;
@@ -4430,6 +4459,20 @@ const handleDialogClick = (event) => {
     if (confirmed) {
       removeTask(state.editingTaskId);
       closeTaskDialog();
+    }
+  } else if (action === "dialog-add-link") {
+    event.preventDefault();
+    if (elements.dialogLinksList) {
+      createLinkRow(elements.dialogLinksList);
+    }
+  } else if (action === "remove-link") {
+    const row = event.target.closest('[data-link-row]');
+    if (row && elements.dialogLinksList?.contains(row)) {
+      event.preventDefault();
+      row.remove();
+      if (elements.dialogLinksList.childElementCount === 0) {
+        createLinkRow(elements.dialogLinksList);
+      }
     }
   } else if (action === "remove-dialog-attachment") {
     const attachmentId = event.target.dataset.attachmentId;
@@ -6032,6 +6075,7 @@ const registerEventListeners = () => {
 
   if (elements.quickAddForm) {
     elements.quickAddForm.addEventListener("submit", handleQuickAddSubmit);
+    elements.quickAddForm.addEventListener("click", handleQuickAddClick);
   }
   elements.quickAddCancel?.addEventListener("click", handleQuickAddCancel);
   elements.quickAddProject?.addEventListener("change", handleQuickAddProjectChange);
@@ -6095,6 +6139,7 @@ const registerEventListeners = () => {
 
 const init = async () => {
   registerEventListeners();
+  resetQuickAddForm();
   await hydrateState();
   initialiseTextareaAutosize();
   renderMeetingActionItems();

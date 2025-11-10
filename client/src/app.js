@@ -87,12 +87,369 @@ const PRIORITY_LABELS = {
 };
 const MIN_TEXTAREA_HEIGHT = 72;
 const MAX_TEXTAREA_HEIGHT = 720;
-const AUTOSIZE_RESET_KEYS = new Set([
-  "quick-add-description",
-  "dialog-description",
-  "meeting-notes",
-  "email-notes",
+const AUTOSIZE_RESET_KEYS = new Set();
+const RICH_TEXT_COMMANDS = [
+  {
+    name: "unordered",
+    command: "insertUnorderedList",
+    htmlLabel: "&bull;",
+    title: "Bulleted list",
+  },
+  {
+    name: "ordered",
+    command: "insertOrderedList",
+    label: "1.",
+    title: "Numbered list",
+  },
+];
+const RICH_TEXT_ALLOWED_TAGS = new Set([
+  "a",
+  "b",
+  "strong",
+  "i",
+  "em",
+  "u",
+  "s",
+  "del",
+  "strike",
+  "p",
+  "div",
+  "br",
+  "ul",
+  "ol",
+  "li",
 ]);
+const RICH_TEXT_SAFE_PROTOCOL = /^(https?:|mailto:|tel:)/i;
+const EMAIL_ADDRESS_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+const richTextControllers = new WeakMap();
+let activeRichTextController = null;
+
+const isLikelyHtml = (value = "") => /<[a-z][\s\S]*>/i.test(value);
+
+const escapeHtml = (text = "") =>
+  text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const convertPlainTextToRichHtml = (text = "") => {
+  if (!text) return "";
+  return text
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => (line ? `<p>${escapeHtml(line)}</p>` : "<p><br></p>"))
+    .join("");
+};
+
+const normaliseRichTextHref = (value = "") => {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (RICH_TEXT_SAFE_PROTOCOL.test(trimmed)) {
+    return trimmed;
+  }
+  if (EMAIL_ADDRESS_PATTERN.test(trimmed)) {
+    return `mailto:${trimmed}`;
+  }
+  if (/^[a-z]+:/i.test(trimmed)) {
+    return "";
+  }
+  return `https://${trimmed.replace(/^\/*/, "")}`;
+};
+
+const cleanRichTextElement = (root) => {
+  if (!root || typeof document === "undefined") return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, null);
+  const nodesToUnwrap = [];
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    const tag = node.tagName.toLowerCase();
+    if (tag === "span") {
+      const style = node.getAttribute("style") || "";
+      const decorationMatch = style.match(/text-decoration\s*:\s*([^;]+)/i);
+      if (decorationMatch) {
+        const decoration = decorationMatch[1];
+        if (/\bunderline\b/i.test(decoration)) {
+          const underline = document.createElement("u");
+          while (node.firstChild) underline.append(node.firstChild);
+          node.replaceWith(underline);
+          continue;
+        }
+        if (/\bline-through\b/i.test(decoration)) {
+          const strike = document.createElement("s");
+          while (node.firstChild) strike.append(node.firstChild);
+          node.replaceWith(strike);
+          continue;
+        }
+      }
+      const fragment = document.createDocumentFragment();
+      while (node.firstChild) fragment.append(node.firstChild);
+      node.replaceWith(fragment);
+      continue;
+    }
+    if (!RICH_TEXT_ALLOWED_TAGS.has(tag)) {
+      nodesToUnwrap.push(node);
+      continue;
+    }
+    if (tag === "a") {
+      const safeHref = normaliseRichTextHref(node.getAttribute("href") ?? "");
+      if (!safeHref) {
+        nodesToUnwrap.push(node);
+        continue;
+      }
+      node.setAttribute("href", safeHref);
+      node.setAttribute("target", "_blank");
+      node.setAttribute("rel", "noopener noreferrer nofollow");
+      [...node.attributes].forEach((attr) => {
+        if (!["href", "target", "rel"].includes(attr.name)) {
+          node.removeAttribute(attr.name);
+        }
+      });
+    } else {
+      [...node.attributes].forEach((attr) => node.removeAttribute(attr.name));
+    }
+  }
+
+  nodesToUnwrap.forEach((node) => {
+    while (node.firstChild) {
+      node.parentNode.insertBefore(node.firstChild, node);
+    }
+    node.remove();
+  });
+};
+
+const sanitizeRichText = (value = "") => {
+  if (!value) return "";
+  if (typeof document === "undefined") {
+    return String(value).trim();
+  }
+  const container = document.createElement("div");
+  container.innerHTML = value;
+  cleanRichTextElement(container);
+  return container.innerHTML.trim();
+};
+
+const convertRichTextToPlainText = (value = "") => {
+  if (!value) return "";
+  const source = typeof value === "string" ? value : "";
+  if (!source) return "";
+  if (!isLikelyHtml(source)) {
+    return source.replace(/\u00a0/g, " ").trim();
+  }
+  if (typeof document === "undefined") {
+    return source.replace(/\u00a0/g, " ").replace(/<[^>]*>/g, " ").trim();
+  }
+  const container = document.createElement("div");
+  container.innerHTML = source;
+  cleanRichTextElement(container);
+  container.querySelectorAll("br").forEach((br) => br.replaceWith("\n"));
+  ["p", "div", "li"].forEach((selector) => {
+    container.querySelectorAll(selector).forEach((node) => {
+      node.insertAdjacentText("beforebegin", "\n");
+      node.insertAdjacentText("afterend", "\n");
+    });
+  });
+  return (container.textContent || "")
+    .replace(/\u00a0/g, " ")
+    .replace(/\n{2,}/g, "\n")
+    .trim();
+};
+
+const normaliseRichTextField = (value = "") => {
+  if (!value) return "";
+  const source = typeof value === "string" ? value : "";
+  if (!source) return "";
+  const html = isLikelyHtml(source) ? source : convertPlainTextToRichHtml(source);
+  return sanitizeRichText(html);
+};
+
+const updateRichTextEditorEmptyState = (controller) => {
+  if (!controller?.editor) return;
+  const editor = controller.editor;
+  const hasContent = editor.textContent.trim().length > 0 || Boolean(editor.querySelector("li"));
+  if (!hasContent && editor.innerHTML !== "") {
+    editor.innerHTML = "";
+  }
+  editor.dataset.empty = hasContent ? "false" : "true";
+};
+
+const updateRichTextToolbarState = () => {
+  if (!activeRichTextController) return;
+};
+
+const buildRichTextToolbar = (controller) => {
+  controller.toolbar.replaceChildren();
+  controller.buttons = [];
+  RICH_TEXT_COMMANDS.forEach((config) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "rich-text-toolbar__button";
+    if (config.command) {
+      button.dataset.command = config.command;
+    }
+    button.setAttribute("aria-label", config.title);
+    if (config.htmlLabel) {
+      button.innerHTML = config.htmlLabel;
+    } else {
+      button.textContent = config.label;
+    }
+    button.addEventListener("mousedown", (event) => event.preventDefault());
+    button.addEventListener("click", (event) => {
+      if (event.detail > 1) return;
+      controller.editor.focus();
+      if (config.command) {
+        const selection = document.getSelection();
+        const hasSelection =
+          selection &&
+          selection.rangeCount > 0 &&
+          !selection.getRangeAt(0).collapsed &&
+          controller.editor.contains(selection.getRangeAt(0).commonAncestorContainer);
+        if (!hasSelection) {
+          return;
+        }
+        document.execCommand(config.command, false, config.argument ?? null);
+      }
+      controller.syncHiddenValue();
+      updateRichTextToolbarState();
+    });
+    controller.toolbar.append(button);
+    controller.buttons.push({ button, config });
+  });
+};
+
+const attachRichTextEditorEvents = (controller) => {
+  const { editor, wrapper } = controller;
+  editor.addEventListener("input", () => {
+    controller.syncHiddenValue();
+  });
+  editor.addEventListener("focus", () => {
+    activeRichTextController = controller;
+    updateRichTextToolbarState();
+  });
+  editor.addEventListener("blur", (event) => {
+    const next = event.relatedTarget;
+    if (!wrapper.contains(next)) {
+      if (activeRichTextController === controller) {
+        activeRichTextController = null;
+        updateRichTextToolbarState();
+      }
+    }
+  });
+  editor.addEventListener("paste", (event) => {
+    event.preventDefault();
+    const clipboard = event.clipboardData;
+    const html = clipboard?.getData("text/html");
+    const text = clipboard?.getData("text/plain");
+    let payload = "";
+    if (html) {
+      payload = sanitizeRichText(html);
+    } else if (text) {
+      payload = sanitizeRichText(convertPlainTextToRichHtml(text));
+    }
+    if (payload) {
+      document.execCommand("insertHTML", false, payload);
+    } else if (text) {
+      document.execCommand("insertText", false, text);
+    }
+    controller.syncHiddenValue();
+  });
+};
+
+const upgradeTextareaToRichText = (textarea) => {
+  if (!textarea || richTextControllers.has(textarea)) return;
+  const wrapper = document.createElement("div");
+  wrapper.className = "rich-text-field";
+  const toolbar = document.createElement("div");
+  toolbar.className = "rich-text-toolbar";
+  const editor = document.createElement("div");
+  editor.className = "rich-text-editor";
+  editor.contentEditable = "true";
+  editor.dataset.placeholder = textarea.getAttribute("placeholder") || "";
+  const autosizeKey = textarea.dataset.autosizeKey;
+  const autosizeDefault = textarea.dataset.autosizeDefault;
+  if (autosizeKey) {
+    editor.dataset.autosizeKey = autosizeKey;
+    if (autosizeDefault) {
+      editor.dataset.autosizeDefault = autosizeDefault;
+    }
+    delete textarea.dataset.autosizeKey;
+    delete textarea.dataset.autosizeDefault;
+  }
+  textarea.classList.add("rich-text-hidden-input");
+  textarea.setAttribute("aria-hidden", "true");
+  textarea.tabIndex = -1;
+  textarea.parentNode.insertBefore(wrapper, textarea);
+  wrapper.append(toolbar, editor, textarea);
+
+  const controller = {
+    textarea,
+    toolbar,
+    editor,
+    wrapper,
+    buttons: [],
+    setValue(value) {
+      const safe = normaliseRichTextField(value ?? "");
+      this.editor.innerHTML = safe;
+      this.textarea.value = safe;
+      updateRichTextEditorEmptyState(this);
+    },
+    getValue() {
+      return normaliseRichTextField(this.editor.innerHTML ?? "");
+    },
+    syncHiddenValue() {
+      this.textarea.value = this.getValue();
+      updateRichTextEditorEmptyState(this);
+    },
+  };
+
+  buildRichTextToolbar(controller);
+  attachRichTextEditorEvents(controller);
+  controller.setValue(textarea.value ?? "");
+  if (textarea.form) {
+    textarea.form.addEventListener("reset", () => {
+      window.requestAnimationFrame(() => controller.setValue(textarea.value ?? ""));
+    });
+  }
+  richTextControllers.set(textarea, controller);
+};
+
+const initialiseRichTextEditors = () => {
+  if (typeof document === "undefined") return;
+  document.querySelectorAll('textarea[data-rich-text="true"]').forEach((textarea) => {
+    upgradeTextareaToRichText(textarea);
+  });
+};
+
+const getRichTextController = (field) => (field ? richTextControllers.get(field) ?? null : null);
+
+const getRichTextElement = (field) => {
+  const controller = getRichTextController(field);
+  return controller ? controller.editor : field;
+};
+
+const setRichTextValue = (field, value) => {
+  const controller = getRichTextController(field);
+  if (controller) {
+    controller.setValue(value ?? "");
+  } else if (field) {
+    field.value = typeof value === "string" ? value : "";
+  }
+};
+
+const getRichTextValue = (field) => {
+  const controller = getRichTextController(field);
+  if (controller) {
+    controller.syncHiddenValue();
+    return controller.textarea.value.trim();
+  }
+  return field?.value?.trim() ?? "";
+};
+
+document.addEventListener("selectionchange", () => {
+  if (!activeRichTextController) return;
+  updateRichTextToolbarState();
+});
 const DEFAULT_USERGUIDE_LINES = [
   "## Workspace Overview",
   "- Shared access – everyone lands in the same workspace automatically; anything you add or update appears live for teammates.",
@@ -306,6 +663,7 @@ const elements = {
   quickAddAssignee: document.querySelector('#quickAddForm select[name="assignee"]'),
   quickAddAttachments: document.querySelector('#quickAddForm input[name="attachments"]'),
   quickAddAttachmentList: document.querySelector('#quickAddForm [data-attachment-list]'),
+  quickAddLinksList: document.querySelector("[data-quick-links]"),
   quickAddCancel: document.querySelector('#quickAddForm [data-action="cancel"]'),
   quickAddError: document.querySelector(".quick-add-error"),
   toggleQuickAdd: document.getElementById("toggleQuickAdd"),
@@ -336,6 +694,7 @@ const elements = {
   taskDialogToggle: document.querySelector('[data-action="toggle-task-completion"]'),
   dialogAttachmentsInput: document.querySelector('#dialogForm input[name="attachments"]'),
   dialogAttachmentList: document.querySelector('#dialogForm [data-dialog-attachment-list]'),
+  dialogLinksList: document.querySelector("[data-dialog-links]"),
   taskTemplate: document.getElementById("taskItemTemplate"),
   activeTasksMetric: document.getElementById("active-tasks"),
   activityFeed: document.getElementById("activity-feed"),
@@ -1102,6 +1461,7 @@ const ensureTaskDefaults = (task) => {
     .filter(Boolean);
   task.metadata.actionItems = actionItems;
   task.actionItems = actionItems;
+  task.description = normaliseRichTextField(task.description ?? "");
 };
 const describeDueDate = (dueDate) => {
   if (!dueDate) return { label: "", className: "" };
@@ -1132,11 +1492,13 @@ const describeDueDate = (dueDate) => {
 };
 
 const getTaskDescriptionText = (task) => {
-  if (typeof task.description === "string" && task.description.trim()) {
-    return task.description.trim();
+  const detail = convertRichTextToPlainText(task.description ?? "");
+  if (detail) {
+    return detail;
   }
-  if (typeof task.metadata?.notes === "string" && task.metadata.notes.trim()) {
-    return task.metadata.notes.trim();
+  const legacyNotes = convertRichTextToPlainText(task.metadata?.notes ?? "");
+  if (legacyNotes) {
+    return legacyNotes;
   }
   if (task.kind === "meeting" && typeof task.metadata?.attendees === "string") {
     const attendees = task.metadata.attendees.trim();
@@ -1285,20 +1647,21 @@ const matchesSearch = (task) => {
   const department = getDepartmentById(task.departmentId);
   const attachments = Array.isArray(task.attachments) ? task.attachments : [];
   const links = Array.isArray(task.links) ? task.links : [];
+  const descriptionText = convertRichTextToPlainText(task.description ?? "").toLowerCase();
 
   const metadataValues = [];
   if (task.metadata && typeof task.metadata === "object") {
     Object.values(task.metadata).forEach((value) => {
       if (typeof value === "string") {
-        metadataValues.push(value.toLowerCase());
+        metadataValues.push(convertRichTextToPlainText(value).toLowerCase());
       } else if (Array.isArray(value)) {
         value.forEach((entry) => {
           if (typeof entry === "string") {
-            metadataValues.push(entry.toLowerCase());
+            metadataValues.push(convertRichTextToPlainText(entry).toLowerCase());
           } else if (entry && typeof entry === "object") {
             Object.values(entry).forEach((nested) => {
               if (typeof nested === "string") {
-                metadataValues.push(nested.toLowerCase());
+                metadataValues.push(convertRichTextToPlainText(nested).toLowerCase());
               }
             });
           }
@@ -1315,7 +1678,7 @@ const matchesSearch = (task) => {
 
   return (
     task.title.toLowerCase().includes(needle) ||
-    (task.description ?? "").toLowerCase().includes(needle) ||
+    descriptionText.includes(needle) ||
     (task.kind ?? "").toString().toLowerCase().includes(needle) ||
     (task.source ?? "").toString().toLowerCase().includes(needle) ||
     (section?.name ?? "").toLowerCase().includes(needle) ||
@@ -3217,7 +3580,7 @@ const addTask = (payload) => {
     kind: normaliseTaskKind(payload.kind),
     source: normaliseTaskSource(payload.source),
     title: payload.title,
-    description: payload.description,
+    description: normaliseRichTextField(payload.description ?? ""),
     dueDate: payload.dueDate,
     priority: payload.priority,
     projectId,
@@ -3263,6 +3626,7 @@ const updateTask = (taskId, updates) => {
   const hasSourceUpdate = Object.prototype.hasOwnProperty.call(updates, "source");
   const hasMetadataUpdate = Object.prototype.hasOwnProperty.call(updates, "metadata");
   const hasLinksUpdate = Object.prototype.hasOwnProperty.call(updates, "links");
+  const hasDescriptionUpdate = Object.prototype.hasOwnProperty.call(updates, "description");
 
   const nextKind = normaliseTaskKind(updates.kind ?? previous.kind);
   const nextSource = hasSourceUpdate
@@ -3278,6 +3642,9 @@ const updateTask = (taskId, updates) => {
   const nextLinks = hasLinksUpdate
     ? normaliseTaskLinks(updates.links)
     : normaliseTaskLinks(previous.links);
+  const nextDescription = hasDescriptionUpdate
+    ? normaliseRichTextField(updates.description ?? "")
+    : previous.description;
 
   const completedFlag =
     updates.completed !== undefined ? updates.completed : previous.completed;
@@ -3300,6 +3667,7 @@ const updateTask = (taskId, updates) => {
   const updatedTask = {
     ...previous,
     ...updates,
+    description: nextDescription,
     kind: nextKind,
     source: nextSource,
     metadata: nextMetadata,
@@ -4127,7 +4495,7 @@ const prepareMeetingDialog = (projectId, task = null) => {
   form.elements.attendees.value = task?.metadata?.attendees ?? "";
   form.elements.title.value = task?.title ?? "";
   if (form.elements.notes) {
-    form.elements.notes.value = task?.description ?? "";
+    setRichTextValue(form.elements.notes, task?.description ?? "");
   }
 
   const actionItems = Array.isArray(task?.metadata?.actionItems) ? task.metadata.actionItems : [];
@@ -4160,9 +4528,10 @@ const prepareMeetingDialog = (projectId, task = null) => {
       : "Add a sub-project before logging a meeting.";
   }
   registerAutosizeTextarea(form.elements.attendees);
-  registerAutosizeTextarea(form.elements.notes);
+  const meetingNotesEditor = getRichTextElement(form.elements.notes);
+  registerAutosizeTextarea(meetingNotesEditor);
   form.elements.attendees?.dispatchEvent(new Event("input", { bubbles: false }));
-  form.elements.notes?.dispatchEvent(new Event("input", { bubbles: false }));
+  meetingNotesEditor?.dispatchEvent(new Event("input", { bubbles: false }));
 };
 
 const openMeetingDialog = (projectId, task = null) => {
@@ -4189,7 +4558,11 @@ const closeMeetingDialog = () => {
     renderMeetingActionItems();
     if (elements.meetingError) elements.meetingError.textContent = "";
     applySavedTextareaHeight(form.elements.attendees);
-    applySavedTextareaHeight(form.elements.notes);
+    if (form.elements.notes) {
+      setRichTextValue(form.elements.notes, "");
+      const meetingNotesEditor = getRichTextElement(form.elements.notes);
+      applySavedTextareaHeight(meetingNotesEditor);
+    }
   }
   if (elements.meetingActionInput) {
     elements.meetingActionInput.value = "";
@@ -4250,10 +4623,11 @@ const commitMeetingForm = ({ allowCreate = false } = {}) => {
   const actionItems = commitMeetingActionDraft();
   metadata.actionItems = actionItems;
   metadata.links = links;
+  const notesValue = form.elements.notes ? getRichTextValue(form.elements.notes) : "";
 
   const payload = {
     title,
-    description: form.elements.notes?.value?.trim() ?? "",
+    description: notesValue,
     dueDate: form.elements.date.value || "",
     priority: form.elements.priority.value || "medium",
     projectId,
@@ -4399,7 +4773,7 @@ const prepareEmailDialog = (projectId, task = null) => {
   form.elements.emailAddress.value = task?.metadata?.emailAddress ?? "";
   form.elements.title.value = task?.title ?? "";
   if (form.elements.notes) {
-    form.elements.notes.value = task?.description ?? "";
+    setRichTextValue(form.elements.notes, task?.description ?? "");
   }
   resetLinkList(elements.emailLinksList, Array.isArray(task?.links) ? task.links : []);
   state.emailCompletedDraft = Boolean(task?.completed);
@@ -4422,8 +4796,9 @@ const prepareEmailDialog = (projectId, task = null) => {
       ? ""
       : "Add a sub-project before logging an email.";
   }
-  registerAutosizeTextarea(form.elements.notes);
-  form.elements.notes?.dispatchEvent(new Event("input", { bubbles: false }));
+  const emailNotesEditor = getRichTextElement(form.elements.notes);
+  registerAutosizeTextarea(emailNotesEditor);
+  emailNotesEditor?.dispatchEvent(new Event("input", { bubbles: false }));
 };
 
 const openEmailDialog = (projectId, task = null) => {
@@ -4447,7 +4822,11 @@ const closeEmailDialog = () => {
     form.reset();
     resetLinkList(elements.emailLinksList);
     if (elements.emailError) elements.emailError.textContent = "";
-    applySavedTextareaHeight(form.elements.notes);
+    if (form.elements.notes) {
+      setRichTextValue(form.elements.notes, "");
+      const emailNotesEditor = getRichTextElement(form.elements.notes);
+      applySavedTextareaHeight(emailNotesEditor);
+    }
   }
   if (elements.emailDialogToggle) {
     elements.emailDialogToggle.hidden = true;
@@ -4505,10 +4884,11 @@ const commitEmailForm = ({ allowCreate = false } = {}) => {
   metadata.emailAddress = form.elements.emailAddress.value.trim();
   metadata.status = form.elements.status.value;
   metadata.links = links;
+  const emailNotes = form.elements.notes ? getRichTextValue(form.elements.notes) : "";
 
   const payload = {
     title,
-    description: form.elements.notes?.value?.trim() ?? "",
+    description: emailNotes,
     dueDate: form.elements.date.value || "",
     priority: form.elements.priority.value || "medium",
     projectId,
@@ -4606,16 +4986,21 @@ const handleQuickAddSubmit = async (event) => {
     return;
   }
   elements.quickAddError.textContent = "";
+  const descriptionField = elements.quickAddForm?.elements?.description;
+  const description = descriptionField
+    ? getRichTextValue(descriptionField)
+    : (data.get("description") ?? "").trim();
 
   const projectId = data.get("project") || "inbox";
   const subProjectId = data.get("subProject") || "";
   const sectionId = data.get("section") || getDefaultSectionId(projectId);
+  const links = collectLinks(elements.quickAddLinksList);
   const attachments = elements.quickAddAttachments ? await readFilesAsData(elements.quickAddAttachments.files) : [];
 
   try {
     addTask({
       title,
-      description: (data.get("description") ?? "").trim(),
+      description,
       dueDate: data.get("dueDate") || "",
       priority: data.get("priority") || "medium",
       projectId,
@@ -4624,6 +5009,7 @@ const handleQuickAddSubmit = async (event) => {
       departmentId: data.get("department") || "",
       assigneeId: data.get("assignee") || "",
       attachments,
+      links,
     });
 
     resetQuickAddForm();
@@ -4631,6 +5017,27 @@ const handleQuickAddSubmit = async (event) => {
   } catch (error) {
     console.error("Failed to create task.", error);
     elements.quickAddError.textContent = "Unable to create task. Please try again.";
+  }
+};
+
+const handleQuickAddClick = (event) => {
+  const action = event.target.dataset.action;
+  if (action === "quick-add-link") {
+    event.preventDefault();
+    if (elements.quickAddLinksList) {
+      createLinkRow(elements.quickAddLinksList);
+    }
+    return;
+  }
+  if (action === "remove-link") {
+    const row = event.target.closest('[data-link-row]');
+    if (row && elements.quickAddLinksList?.contains(row)) {
+      event.preventDefault();
+      row.remove();
+      if (elements.quickAddLinksList.childElementCount === 0) {
+        createLinkRow(elements.quickAddLinksList);
+      }
+    }
   }
 };
 
@@ -4648,10 +5055,13 @@ const resetQuickAddForm = () => {
   elements.quickAddError.textContent = "";
   if (elements.quickAddAttachmentList) elements.quickAddAttachmentList.replaceChildren();
   if (elements.quickAddAttachments) elements.quickAddAttachments.value = "";
+  resetLinkList(elements.quickAddLinksList);
   syncQuickAddSelectors();
   const descriptionField = elements.quickAddForm?.elements?.description;
   if (descriptionField) {
-    applySavedTextareaHeight(descriptionField);
+    setRichTextValue(descriptionField, "");
+    const editor = getRichTextElement(descriptionField);
+    applySavedTextareaHeight(editor);
   }
 };
 
@@ -4825,9 +5235,10 @@ const openTaskDialog = (taskId) => {
   );
 
   elements.dialogForm.title.value = task.title;
-  elements.dialogForm.description.value = task.description ?? "";
-  registerAutosizeTextarea(elements.dialogForm.description);
-  elements.dialogForm.description?.dispatchEvent(new Event("input", { bubbles: false }));
+  setRichTextValue(elements.dialogForm.description, task.description ?? "");
+  const dialogDescriptionEditor = getRichTextElement(elements.dialogForm.description);
+  registerAutosizeTextarea(dialogDescriptionEditor);
+  dialogDescriptionEditor?.dispatchEvent(new Event("input", { bubbles: false }));
   elements.dialogForm.dueDate.value = task.dueDate ?? "";
   elements.dialogForm.priority.value = task.priority ?? "medium";
   elements.dialogForm.project.value = task.projectId ?? "inbox";
@@ -4845,6 +5256,7 @@ const openTaskDialog = (taskId) => {
   if (elements.dialogAttachmentsInput) {
     elements.dialogAttachmentsInput.value = "";
   }
+  resetLinkList(elements.dialogLinksList, Array.isArray(task?.links) ? task.links : []);
 
   updateTaskDialogCompletionState(task);
 
@@ -4864,8 +5276,11 @@ const closeTaskDialog = () => {
   if (elements.dialogAttachmentsInput) {
     elements.dialogAttachmentsInput.value = "";
   }
-  if (elements.dialogForm?.elements?.description) {
-    applySavedTextareaHeight(elements.dialogForm.elements.description);
+  resetLinkList(elements.dialogLinksList);
+  const dialogDescriptionField = elements.dialogForm?.elements?.description;
+  if (dialogDescriptionField) {
+    const dialogDescriptionEditor = getRichTextElement(dialogDescriptionField);
+    applySavedTextareaHeight(dialogDescriptionEditor);
   }
   if (elements.taskDialogStatus) {
     elements.taskDialogStatus.textContent = "";
@@ -4933,14 +5348,20 @@ const commitTaskDialogChanges = () => {
     return false;
   }
 
+  const descriptionField = elements.dialogForm.elements.description;
+  const descriptionValue = descriptionField
+    ? getRichTextValue(descriptionField)
+    : (data.get("description") ?? "").trim();
+
   const projectId = data.get("project") || "inbox";
   const sectionId = data.get("section") || getDefaultSectionId(projectId);
   const subProjectId = data.get("subProject") || "";
+  const links = collectLinks(elements.dialogLinksList);
 
   try {
     updateTask(state.editingTaskId, {
       title,
-      description: (data.get("description") ?? "").trim(),
+      description: descriptionValue,
       dueDate: data.get("dueDate") || "",
       priority: data.get("priority") || "medium",
       projectId,
@@ -4949,6 +5370,7 @@ const commitTaskDialogChanges = () => {
       departmentId: data.get("department") || "",
       assigneeId: data.get("assignee") || "",
       attachments: cloneAttachments(state.dialogAttachmentDraft),
+      links,
       completed: elements.dialogForm.completed.checked,
     });
     return true;
@@ -4995,6 +5417,20 @@ const handleDialogClick = (event) => {
     if (confirmed) {
       removeTask(state.editingTaskId);
       closeTaskDialog();
+    }
+  } else if (action === "dialog-add-link") {
+    event.preventDefault();
+    if (elements.dialogLinksList) {
+      createLinkRow(elements.dialogLinksList);
+    }
+  } else if (action === "remove-link") {
+    const row = event.target.closest('[data-link-row]');
+    if (row && elements.dialogLinksList?.contains(row)) {
+      event.preventDefault();
+      row.remove();
+      if (elements.dialogLinksList.childElementCount === 0) {
+        createLinkRow(elements.dialogLinksList);
+      }
     }
   } else if (action === "remove-dialog-attachment") {
     const attachmentId = event.target.dataset.attachmentId;
@@ -6652,6 +7088,7 @@ const registerEventListeners = () => {
 
   if (elements.quickAddForm) {
     elements.quickAddForm.addEventListener("submit", handleQuickAddSubmit);
+    elements.quickAddForm.addEventListener("click", handleQuickAddClick);
   }
   elements.quickAddCancel?.addEventListener("click", handleQuickAddCancel);
   elements.quickAddProject?.addEventListener("change", handleQuickAddProjectChange);
@@ -6714,7 +7151,9 @@ const registerEventListeners = () => {
 };
 
 const init = async () => {
+  initialiseRichTextEditors();
   registerEventListeners();
+  resetQuickAddForm();
   await hydrateState();
   initialiseTextareaAutosize();
   renderMeetingActionItems();

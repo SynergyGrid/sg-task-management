@@ -276,6 +276,15 @@
                 <input type="file" name="attachments" multiple class="field-input" />
                 <ul class="attachment-list" data-attachment-list></ul>
               </div>
+              <div class="sm:col-span-2 lg:col-span-3 xl:col-span-3">
+                <div class="field-group">
+                  <div class="flex items-center justify-between">
+                    <span class="field-label">Links</span>
+                    <button type="button" class="ghost-button small" data-action="quick-add-link">Add link</button>
+                  </div>
+                  <ul class="link-list" data-quick-links></ul>
+                </div>
+              </div>
               <div class="sm:col-span-2 lg:col-span-3 xl:col-span-6 flex justify-end items-center gap-3">
                 <p class="quick-add-error flex-1 text-sm text-rose-500" role="alert"></p>
                 <button type="button" class="btn-secondary" data-action="cancel">Cancel</button>
@@ -374,6 +383,13 @@
           <input type="file" name="attachments" multiple class="field-input" />
         </label>
         <ul class="attachment-list" data-dialog-attachment-list></ul>
+        <div class="field-group">
+          <div class="flex items-center justify-between">
+            <span class="field-label">Links</span>
+            <button type="button" class="ghost-button small" data-action="dialog-add-link">Add link</button>
+          </div>
+          <ul class="link-list" data-dialog-links></ul>
+        </div>
         <label class="form-field">
           <span class="field-label">Project</span>
           <select name="project" class="field-input"></select>
