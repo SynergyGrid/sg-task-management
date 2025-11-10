@@ -304,6 +304,125 @@ body {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
+.rich-text-field {
+  width: 100%;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.rich-text-field:focus-within {
+  border-color: rgba(37, 99, 235, 0.45);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.rich-text-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(248, 250, 252, 0.94);
+}
+
+.rich-text-toolbar button {
+  border: 1px solid transparent;
+  border-radius: 0.55rem;
+  background: transparent;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.rich-text-toolbar button[data-command="bold"] {
+  font-weight: 700;
+}
+
+.rich-text-toolbar button[data-command="italic"] {
+  font-style: italic;
+}
+
+.rich-text-toolbar button[data-command="underline"] {
+  text-decoration: underline;
+}
+
+.rich-text-toolbar button[data-command="strikeThrough"] {
+  text-decoration: line-through;
+}
+
+.rich-text-toolbar button:hover {
+  background: rgba(15, 23, 42, 0.06);
+  color: #0f172a;
+}
+
+.rich-text-toolbar button:focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.45);
+  outline-offset: 2px;
+}
+
+.rich-text-toolbar button.active,
+.rich-text-toolbar button[aria-pressed="true"] {
+  background: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
+}
+
+.rich-text-editor {
+  padding: 0.65rem 0.75rem;
+  min-height: 4.5rem;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: #0f172a;
+  background: transparent;
+  border: none;
+  border-radius: 0 0 0.85rem 0.85rem;
+  outline: none;
+  overflow-y: auto;
+  resize: vertical;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.rich-text-editor[data-placeholder][data-empty="true"]::before {
+  content: attr(data-placeholder);
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.rich-text-editor ul,
+.rich-text-editor ol {
+  margin: 0.4rem 0;
+  padding-left: 1.3rem;
+  list-style-position: outside;
+}
+
+.rich-text-editor ul {
+  list-style-type: disc;
+}
+
+.rich-text-editor ol {
+  list-style-type: decimal;
+}
+
+.rich-text-editor li {
+  margin-bottom: 0.15rem;
+}
+
+.rich-text-editor a {
+  color: #2563eb;
+  text-decoration: underline;
+  word-break: break-word;
+}
+
+.rich-text-hidden-input {
+  display: none !important;
+}
+
 .task-list {
   display: grid;
   gap: 0.8rem;
