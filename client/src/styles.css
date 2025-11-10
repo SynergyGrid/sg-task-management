@@ -1032,6 +1032,9 @@ header.dragging-section {
   border: 1px solid rgba(226, 232, 240, 0.9);
   box-shadow: 0 20px 45px rgba(15, 23, 42, 0.15);
   padding: 0.75rem;
+  min-width: 420px;
+  max-height: 520px;
+  overflow-y: auto;
   z-index: 20;
 }
 
@@ -1045,8 +1048,6 @@ header.dragging-section {
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: 260px;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
@@ -1087,6 +1088,20 @@ header.dragging-section {
   color: #94a3b8;
 }
 
+.project-group {
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 0.9rem;
+  padding: 0.35rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  background: #fff;
+}
+
+.project-group + .project-group {
+  margin-top: 0.4rem;
+}
+
 .selector-sublist {
   list-style: none;
   margin: 0.15rem 0 0.35rem 1.25rem;
@@ -1123,6 +1138,25 @@ header.dragging-section {
 .selector-subitem button[data-select="sub-project"] small {
   font-size: 0.72rem;
   color: #94a3b8;
+}
+
+.selector-subitem--add {
+  justify-content: flex-start;
+}
+
+.selector-sub-add {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 0.25rem 0.35rem;
+  border-radius: 0.5rem;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.selector-sub-add:hover {
+  background: rgba(37, 99, 235, 0.08);
 }
 
 .selector-subitem-actions {

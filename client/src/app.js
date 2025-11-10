@@ -1519,14 +1519,6 @@ const renderProjectDropdown = () => {
       highlightedProject = rememberedProject;
     }
   }
-  if (highlightedProjectId && !highlightedSubProjectId) {
-    const rememberedSubId = state.projectRecents[highlightedProjectId];
-    const rememberedSub = rememberedSubId ? getSubProjectById(rememberedSubId) : null;
-    if (rememberedSub && rememberedSub.projectId === highlightedProjectId) {
-      highlightedSubProjectId = rememberedSub.id;
-      highlightedSubProject = rememberedSub;
-    }
-  }
   if (!projects.length) {
     const empty = document.createElement("li");
     empty.className = "text-sm text-slate-500 px-2 py-1.5";
@@ -1535,6 +1527,7 @@ const renderProjectDropdown = () => {
   } else {
     projects.forEach((project) => {
       const container = document.createElement("li");
+      container.className = "project-group";
       const header = document.createElement("div");
       header.className = "selector-item";
       const select = document.createElement("button");
@@ -1556,12 +1549,6 @@ const renderProjectDropdown = () => {
 
       const actions = document.createElement("div");
       actions.className = "selector-item-actions";
-      const addSubProject = document.createElement("button");
-      addSubProject.type = "button";
-      addSubProject.className = "selector-action-btn";
-      addSubProject.dataset.action = "add-sub-project";
-      addSubProject.dataset.projectId = project.id;
-      addSubProject.textContent = "Add sub-project";
       const meetingAction = document.createElement("button");
       meetingAction.type = "button";
       meetingAction.className = "selector-action-btn";
@@ -1582,7 +1569,7 @@ const renderProjectDropdown = () => {
       edit.setAttribute("aria-label", `Rename ${project.name}`);
       edit.innerHTML =
         '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 20h4l10-10-4-4L4 16v4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="m14 6 4 4" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
-      actions.append(addSubProject, meetingAction, emailAction, edit);
+      actions.append(meetingAction, emailAction, edit);
       header.append(select, actions);
       container.append(header);
 
@@ -1631,7 +1618,28 @@ const renderProjectDropdown = () => {
           subItem.append(subSelect, subActions);
           subList.append(subItem);
         });
+        const addRow = document.createElement("li");
+        addRow.className = "selector-subitem selector-subitem--add";
+        const addButton = document.createElement("button");
+        addButton.type = "button";
+        addButton.className = "selector-sub-add";
+        addButton.dataset.action = "add-sub-project";
+        addButton.dataset.projectId = project.id;
+        addButton.textContent = "+ Add sub-project";
+        addRow.append(addButton);
+        subList.append(addRow);
         container.append(subList);
+      } else {
+        const addRow = document.createElement("li");
+        addRow.className = "selector-subitem selector-subitem--add";
+        const addButton = document.createElement("button");
+        addButton.type = "button";
+        addButton.className = "selector-sub-add";
+        addButton.dataset.action = "add-sub-project";
+        addButton.dataset.projectId = project.id;
+        addButton.textContent = "+ Add sub-project";
+        addRow.append(addButton);
+        container.append(addRow);
       }
 
       fragment.append(container);
@@ -1644,7 +1652,7 @@ const renderProjectDropdown = () => {
     if (highlightedProject) {
       labelText = highlightedProject.name;
     }
-    if (highlightedProject && highlightedSubProject) {
+    if (state.activeView.type === "sub-project" && highlightedProject && highlightedSubProject) {
       labelText = `${highlightedProject.name} · ${highlightedSubProject.name}`;
     } else if (labelText === "Select project" && projects[0]) {
       labelText = projects[0].name;
