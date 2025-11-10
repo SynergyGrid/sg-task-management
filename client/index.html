@@ -253,6 +253,10 @@
                 <select name="project" class="field-input"></select>
               </div>
               <div>
+                <label class="field-label">Sub-project</label>
+                <select name="subProject" class="field-input"></select>
+              </div>
+              <div>
                 <label class="field-label">Section</label>
                 <select name="section" class="field-input"></select>
               </div>
@@ -377,6 +381,10 @@
           <span class="field-label">Project</span>
           <select name="project" class="field-input"></select>
         </label>
+        <label class="form-field">
+          <span class="field-label">Sub-project</span>
+          <select name="subProject" class="field-input"></select>
+        </label>
         <input type="checkbox" name="completed" hidden />
       </div>
       <footer class="modal-footer">
@@ -395,6 +403,8 @@
         <div class="task-meta-grid">
           <span class="task-meta-item task-meta-assignee text-xs text-slate-500"></span>
           <span class="task-meta-item task-meta-actions text-xs text-slate-500"></span>
+          <span class="task-meta-item task-meta-project text-xs text-slate-500"></span>
+
           <span class="task-meta-item task-meta-due text-xs text-slate-500"></span>
         </div>
       </div>
@@ -476,6 +486,14 @@
       <div class="modal-body space-y-4">
         <p class="text-sm text-slate-500" data-meeting-project></p>
         <input type="hidden" name="projectId" />
+
+        <label class="form-field">
+
+          <span class="field-label">Sub-project</span>
+
+          <select name="subProjectId" class="field-input" required></select>
+
+        </label>
         <label class="form-field">
           <span class="field-label">Title</span>
           <input type="text" name="title" required class="field-input" placeholder="Sprint planning sync" />
@@ -545,6 +563,7 @@
         <p class="form-error" data-meeting-error></p>
       </div>
       <footer class="modal-footer">
+        <button type="button" class="ghost-button danger" data-action="delete-meeting" hidden>Delete</button>
         <button type="button" class="ghost-button" data-action="close-meeting">Cancel</button>
         <button type="submit" class="btn-primary">Save meeting</button>
       </footer>
@@ -567,6 +586,14 @@
       <div class="modal-body space-y-4">
         <p class="text-sm text-slate-500" data-email-project></p>
         <input type="hidden" name="projectId" />
+
+        <label class="form-field">
+
+          <span class="field-label">Sub-project</span>
+
+          <select name="subProjectId" class="field-input" required></select>
+
+        </label>
         <label class="form-field">
           <span class="field-label">Title</span>
           <input type="text" name="title" required class="field-input" placeholder="Client follow-up" />
@@ -621,6 +648,7 @@
         <p class="form-error" data-email-error></p>
       </div>
       <footer class="modal-footer">
+        <button type="button" class="ghost-button danger" data-action="delete-email" hidden>Delete</button>
         <button type="button" class="ghost-button" data-action="close-email">Cancel</button>
         <button type="submit" class="btn-primary">Save email</button>
       </footer>

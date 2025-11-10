@@ -127,6 +127,25 @@ execute procedure public.touch_updated_at();
 create unique index if not exists projects_name_unique
   on public.projects(workspace_id, lower(name));
 
+create table if not exists public.sub_projects (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  project_id uuid not null references public.projects(id) on delete cascade,
+  name text not null,
+  created_by uuid references public.profiles(id) on delete set null,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+drop trigger if exists sub_projects_set_updated_at on public.sub_projects;
+create trigger sub_projects_set_updated_at
+before update on public.sub_projects
+for each row
+execute procedure public.touch_updated_at();
+
+create index if not exists sub_projects_project_idx
+  on public.sub_projects(project_id);
+
 create table if not exists public.sections (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
@@ -151,6 +170,7 @@ create table if not exists public.tasks (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
   project_id uuid not null references public.projects(id) on delete cascade,
+  sub_project_id uuid references public.sub_projects(id) on delete set null,
   section_id uuid references public.sections(id) on delete set null,
   title text not null,
   description text,
@@ -222,6 +242,7 @@ alter table public.workspace_members force row level security;
 alter table public.departments force row level security;
 alter table public.members force row level security;
 alter table public.projects force row level security;
+alter table public.sub_projects force row level security;
 alter table public.sections force row level security;
 alter table public.tasks force row level security;
 alter table public.attachments force row level security;
@@ -412,6 +433,41 @@ create policy "Members manage projects"
     )
   );
 
+create policy "Members read sub-projects"
+  on public.sub_projects
+  for select
+  using (
+    auth.uid() is not null
+    and exists (
+      select 1
+      from public.workspace_members m
+      where m.workspace_id = sub_projects.workspace_id
+        and m.profile_id = auth.uid()
+    )
+  );
+
+create policy "Members manage sub-projects"
+  on public.sub_projects
+  for all
+  using (
+    auth.uid() is not null
+    and exists (
+      select 1
+      from public.workspace_members m
+      where m.workspace_id = sub_projects.workspace_id
+        and m.profile_id = auth.uid()
+    )
+  )
+  with check (
+    auth.uid() is not null
+    and exists (
+      select 1
+      from public.workspace_members m
+      where m.workspace_id = sub_projects.workspace_id
+        and m.profile_id = auth.uid()
+    )
+  );
+
 create policy "Members read sections"
   on public.sections
   for select
@@ -535,4 +591,3 @@ create policy "Users manage their settings"
   );
 
 commit;
-

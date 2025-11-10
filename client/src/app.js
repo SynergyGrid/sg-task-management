@@ -4,6 +4,7 @@ import { doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore';
 const STORAGE_KEYS = {
   tasks: "synergygrid.todoist.tasks.v2",
   projects: "synergygrid.todoist.projects.v2",
+  subProjects: "synergygrid.todoist.sub-projects.v1",
   sections: "synergygrid.todoist.sections.v1",
   companies: "synergygrid.todoist.companies.v1",
   members: "synergygrid.todoist.members.v1",
@@ -232,6 +233,7 @@ const LEGACY_USERGUIDES = [LEGACY_USERGUIDE_V1, LEGACY_USERGUIDE_V2];
 const state = {
   tasks: [],
   projects: [],
+  subProjects: [],
   sections: [],
   companies: [],
   members: [],
@@ -240,6 +242,7 @@ const state = {
   activeView: { type: "view", value: "workspace" },
   activeCompanyId: DEFAULT_COMPANY.id,
   companyRecents: {},
+  projectRecents: {},
   userguide: [...DEFAULT_USERGUIDE],
   viewMode: "list",
   searchTerm: "",
@@ -296,6 +299,7 @@ const elements = {
   addProject: document.getElementById("addProject"),
   quickAddForm: document.getElementById("quickAddForm"),
   quickAddProject: document.querySelector('#quickAddForm select[name="project"]'),
+  quickAddSubProject: document.querySelector('#quickAddForm select[name="subProject"]'),
   quickAddPriority: document.querySelector('#quickAddForm select[name="priority"]'),
   quickAddSection: document.querySelector('#quickAddForm select[name="section"]'),
   quickAddDepartment: document.querySelector('#quickAddForm select[name="department"]'),
@@ -327,6 +331,7 @@ const elements = {
   exportTasks: document.getElementById("exportTasks"),
   taskDialog: document.getElementById("taskDialog"),
   dialogForm: document.getElementById("dialogForm"),
+  dialogSubProjectSelect: document.querySelector('#dialogForm select[name="subProject"]'),
   taskDialogStatus: document.querySelector("[data-task-status]"),
   taskDialogToggle: document.querySelector('[data-action="toggle-task-completion"]'),
   dialogAttachmentsInput: document.querySelector('#dialogForm input[name="attachments"]'),
@@ -343,9 +348,11 @@ const elements = {
   projectDropdownLabel: document.getElementById("projectDropdownLabel"),
   meetingDialog: document.getElementById("meetingDialog"),
   meetingForm: document.getElementById("meetingForm"),
+  meetingSubProjectSelect: document.querySelector('#meetingForm select[name="subProjectId"]'),
   meetingProjectLabel: document.querySelector("[data-meeting-project]"),
   meetingDialogStatus: document.querySelector("[data-meeting-status]"),
   meetingDialogToggle: document.querySelector('[data-action="meeting-toggle-completion"]'),
+  meetingDeleteButton: document.querySelector('[data-action="delete-meeting"]'),
   meetingDepartment: document.querySelector('#meetingForm select[name="department"]'),
   meetingPriority: document.querySelector('#meetingForm select[name="priority"]'),
   meetingLinksList: document.querySelector("[data-meeting-links]"),
@@ -354,9 +361,11 @@ const elements = {
   meetingActionInput: document.querySelector("[data-meeting-action-input]"),
   emailDialog: document.getElementById("emailDialog"),
   emailForm: document.getElementById("emailForm"),
+  emailSubProjectSelect: document.querySelector('#emailForm select[name="subProjectId"]'),
   emailProjectLabel: document.querySelector("[data-email-project]"),
   emailDialogStatus: document.querySelector("[data-email-status]"),
   emailDialogToggle: document.querySelector('[data-action="email-toggle-completion"]'),
+  emailDeleteButton: document.querySelector('[data-action="delete-email"]'),
   emailDepartment: document.querySelector('#emailForm select[name="department"]'),
   emailPriority: document.querySelector('#emailForm select[name="priority"]'),
   emailStatus: document.querySelector('#emailForm select[name="status"]'),
@@ -418,6 +427,10 @@ const saveProjects = () => {
   saveJSON(STORAGE_KEYS.projects, state.projects);
   persistWorkspace();
 };
+const saveSubProjects = () => {
+  saveJSON(STORAGE_KEYS.subProjects, state.subProjects);
+  persistWorkspace();
+};
 const saveSections = () => {
   saveJSON(STORAGE_KEYS.sections, state.sections);
   persistWorkspace();
@@ -448,6 +461,7 @@ const savePreferences = () =>
     viewMode: state.viewMode,
     activeCompanyId: state.activeCompanyId,
     companyRecents: state.companyRecents,
+    projectRecents: state.projectRecents,
     activeTaskTab: state.activeTaskTab,
     activeAllTab: state.activeAllTab,
     metricsFilter: state.metricsFilter,
@@ -467,6 +481,9 @@ const applyStoredPreferences = () => {
   }
   if (prefs.companyRecents && typeof prefs.companyRecents === "object") {
     state.companyRecents = { ...prefs.companyRecents };
+  }
+  if (prefs.projectRecents && typeof prefs.projectRecents === "object") {
+    state.projectRecents = { ...prefs.projectRecents };
   }
   if (typeof prefs.activeTaskTab === "string") {
     state.activeTaskTab = prefs.activeTaskTab;
@@ -503,16 +520,19 @@ const pickProjectColor = (index) => PROJECT_COLORS[index % PROJECT_COLORS.length
 
 const getCompanyById = (companyId) => state.companies.find((company) => company.id === companyId);
 const getProjectById = (projectId) => state.projects.find((project) => project.id === projectId);
+const getSubProjectById = (subProjectId) => state.subProjects.find((entry) => entry.id === subProjectId);
 const getSectionById = (sectionId) => state.sections.find((section) => section.id === sectionId);
 const getSectionsForProject = (projectId) =>
   state.sections
     .filter((section) => section.projectId === projectId)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+const getSubProjectsForProject = (projectId) =>
+  state.subProjects.filter((entry) => entry.projectId === projectId);
 const getProjectsForCompany = (companyId) =>
   state.projects.filter((project) => project.companyId === companyId && !project.isDefault);
-const tasksForCompany = (companyId = state.activeCompanyId) =>
+const tasksForCompany = (companyId = state.activeCompanyId, { includeDeleted = false } = {}) =>
   state.tasks.filter((task) => {
-    if (task.deletedAt) return false;
+    if (!includeDeleted && task.deletedAt) return false;
     if (!companyId || companyId === ALL_COMPANY_ID) return true;
     if (!task.companyId) return companyId === DEFAULT_COMPANY.id;
     return task.companyId === companyId;
@@ -525,9 +545,33 @@ const rememberProjectSelection = (projectId) => {
   state.companyRecents[project.companyId] = project.id;
 };
 
+const rememberSubProjectSelection = (subProjectId) => {
+  const subProject = getSubProjectById(subProjectId);
+  if (!subProject) return;
+  rememberProjectSelection(subProject.projectId);
+  state.projectRecents[subProject.projectId] = subProject.id;
+};
+
+const getActiveProjectContext = () => {
+  if (state.activeView.type === "project") {
+    const project = getProjectById(state.activeView.value);
+    if (!project) return null;
+    return { projectId: project.id, subProjectId: "", project };
+  }
+  if (state.activeView.type === "sub-project") {
+    const subProject = getSubProjectById(state.activeView.value);
+    if (!subProject) return null;
+    const project = getProjectById(subProject.projectId);
+    if (!project) return null;
+    return { projectId: project.id, subProjectId: subProject.id, project, subProject };
+  }
+  return null;
+};
+
 const getPreferredProjectId = () => {
-  if (state.activeView.type === "project" && getProjectById(state.activeView.value)) {
-    return state.activeView.value;
+  const context = getActiveProjectContext();
+  if (context) {
+    return context.projectId;
   }
   const remembered = state.companyRecents[state.activeCompanyId];
   if (remembered && getProjectById(remembered)) {
@@ -589,6 +633,36 @@ const ensureProjectsHaveCompany = () => {
   }
 };
 
+const ensureSubProjectsValid = () => {
+  if (!Array.isArray(state.subProjects)) {
+    state.subProjects = [];
+    return;
+  }
+  const validProjects = new Set(state.projects.map((project) => project.id));
+  const filtered = [];
+  state.subProjects.forEach((subProject) => {
+    if (subProject && validProjects.has(subProject.projectId)) {
+      filtered.push(subProject);
+    }
+  });
+  const validIds = new Set(filtered.map((entry) => entry.id));
+  const hadChanges = filtered.length !== state.subProjects.length;
+  state.subProjects = filtered;
+  let tasksMutated = false;
+  state.tasks = state.tasks.map((task) => {
+    if (task.subProjectId && !validIds.has(task.subProjectId)) {
+      tasksMutated = true;
+      return { ...task, subProjectId: "" };
+    }
+    return task;
+  });
+  if (tasksMutated) {
+    saveTasks();
+  } else if (hadChanges) {
+    saveSubProjects();
+  }
+};
+
 const ensureCompanyPreferences = () => {
   if (!getCompanyById(state.activeCompanyId)) {
     state.activeCompanyId = state.companies[0]?.id ?? DEFAULT_COMPANY.id;
@@ -609,6 +683,18 @@ const ensureCompanyPreferences = () => {
       state.companyRecents[state.activeCompanyId] = fallbackProject.id;
     }
   }
+  ensureProjectRecents();
+};
+
+const ensureProjectRecents = () => {
+  const validPairs = new Map(state.subProjects.map((entry) => [entry.id, entry.projectId]));
+  const next = {};
+  Object.entries(state.projectRecents || {}).forEach(([projectId, subProjectId]) => {
+    if (subProjectId && validPairs.get(subProjectId) === projectId) {
+      next[projectId] = subProjectId;
+    }
+  });
+  state.projectRecents = next;
 };
 
 const normaliseUserguide = (entries) => {
@@ -794,6 +880,7 @@ let pendingUserguideUpgrade = false;
 const getStateSnapshot = () => ({
   tasks: state.tasks,
   projects: state.projects,
+  subProjects: state.subProjects,
   sections: state.sections,
   companies: state.companies,
   members: state.members,
@@ -826,6 +913,7 @@ const applyRemoteState = (data) => {
   const incoming = data || {};
   state.tasks = Array.isArray(incoming.tasks) ? incoming.tasks : [];
   state.projects = Array.isArray(incoming.projects) ? incoming.projects : [];
+  state.subProjects = Array.isArray(incoming.subProjects) ? incoming.subProjects : [];
   state.sections = Array.isArray(incoming.sections) ? incoming.sections : [];
   state.companies = Array.isArray(incoming.companies) ? incoming.companies : [];
   state.members = Array.isArray(incoming.members) ? incoming.members : [];
@@ -842,6 +930,7 @@ const applyRemoteState = (data) => {
   ensureDefaultCompany();
   ensureDefaultProject();
   ensureProjectsHaveCompany();
+  ensureSubProjectsValid();
   ensureDefaultDepartment();
   ensureAllProjectsHaveSections();
   ensureCompanyPreferences();
@@ -962,6 +1051,16 @@ const ensureTaskDefaults = (task) => {
   }
   const project = getProjectById(task.projectId);
   task.companyId = project?.companyId ?? DEFAULT_COMPANY.id;
+  if (task.subProjectId) {
+    const subProject = getSubProjectById(task.subProjectId);
+    if (!subProject) {
+      task.subProjectId = "";
+    } else if (subProject.projectId !== task.projectId) {
+      task.projectId = subProject.projectId;
+    }
+  } else {
+    task.subProjectId = "";
+  }
   const validSection = task.sectionId && getSectionById(task.sectionId);
   if (!validSection) {
     task.sectionId = getDefaultSectionId(task.projectId);
@@ -1172,6 +1271,7 @@ const matchesActiveView = (task) => {
     }
   }
   if (type === "project") return task.projectId === value;
+  if (type === "sub-project") return task.subProjectId === value;
   return true;
 };
 
@@ -1391,7 +1491,20 @@ const renderProjectDropdown = () => {
   const projects = getProjectsForCompany(state.activeCompanyId);
   let highlightedProjectId = "";
   let highlightedProject = null;
-  if (state.activeView.type === "project") {
+  let highlightedSubProjectId = "";
+  let highlightedSubProject = null;
+  if (state.activeView.type === "sub-project") {
+    const activeSubProject = getSubProjectById(state.activeView.value);
+    if (
+      activeSubProject &&
+      getProjectById(activeSubProject.projectId)?.companyId === state.activeCompanyId
+    ) {
+      highlightedProjectId = activeSubProject.projectId;
+      highlightedProject = getProjectById(highlightedProjectId);
+      highlightedSubProjectId = activeSubProject.id;
+      highlightedSubProject = activeSubProject;
+    }
+  } else if (state.activeView.type === "project") {
     const activeProject = getProjectById(state.activeView.value);
     if (activeProject && activeProject.companyId === state.activeCompanyId && !activeProject.isDefault) {
       highlightedProjectId = activeProject.id;
@@ -1406,6 +1519,14 @@ const renderProjectDropdown = () => {
       highlightedProject = rememberedProject;
     }
   }
+  if (highlightedProjectId && !highlightedSubProjectId) {
+    const rememberedSubId = state.projectRecents[highlightedProjectId];
+    const rememberedSub = rememberedSubId ? getSubProjectById(rememberedSubId) : null;
+    if (rememberedSub && rememberedSub.projectId === highlightedProjectId) {
+      highlightedSubProjectId = rememberedSub.id;
+      highlightedSubProject = rememberedSub;
+    }
+  }
   if (!projects.length) {
     const empty = document.createElement("li");
     empty.className = "text-sm text-slate-500 px-2 py-1.5";
@@ -1413,8 +1534,9 @@ const renderProjectDropdown = () => {
     fragment.append(empty);
   } else {
     projects.forEach((project) => {
-      const item = document.createElement("li");
-      item.className = "selector-item";
+      const container = document.createElement("li");
+      const header = document.createElement("div");
+      header.className = "selector-item";
       const select = document.createElement("button");
       select.type = "button";
       select.dataset.select = "project";
@@ -1428,13 +1550,18 @@ const renderProjectDropdown = () => {
       const openTasks = scopedTasks.filter(
         (task) => task.projectId === project.id && !task.completed,
       ).length;
-      meta.textContent = openTasks
-        ? `${openTasks} open task${openTasks === 1 ? "" : "s"}`
-        : "No open tasks";
+      meta.textContent =
+        openTasks === 0 ? "No open tasks" : `${openTasks} open task${openTasks === 1 ? "" : "s"}`;
       select.append(meta);
 
       const actions = document.createElement("div");
       actions.className = "selector-item-actions";
+      const addSubProject = document.createElement("button");
+      addSubProject.type = "button";
+      addSubProject.className = "selector-action-btn";
+      addSubProject.dataset.action = "add-sub-project";
+      addSubProject.dataset.projectId = project.id;
+      addSubProject.textContent = "Add sub-project";
       const meetingAction = document.createElement("button");
       meetingAction.type = "button";
       meetingAction.className = "selector-action-btn";
@@ -1453,10 +1580,61 @@ const renderProjectDropdown = () => {
       edit.dataset.action = "edit-project";
       edit.dataset.projectId = project.id;
       edit.setAttribute("aria-label", `Rename ${project.name}`);
-      edit.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 20h4l10-10-4-4L4 16v4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="m14 6 4 4" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
-      actions.append(meetingAction, emailAction, edit);
-      item.append(select, actions);
-      fragment.append(item);
+      edit.innerHTML =
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 20h4l10-10-4-4L4 16v4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="m14 6 4 4" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+      actions.append(addSubProject, meetingAction, emailAction, edit);
+      header.append(select, actions);
+      container.append(header);
+
+      const subProjects = getSubProjectsForProject(project.id);
+      if (subProjects.length) {
+        const subList = document.createElement("ul");
+        subList.className = "selector-sublist";
+        subProjects.forEach((subProject) => {
+          const subItem = document.createElement("li");
+          subItem.className = "selector-subitem";
+          const subSelect = document.createElement("button");
+          subSelect.type = "button";
+          subSelect.dataset.select = "sub-project";
+          subSelect.dataset.subProjectId = subProject.id;
+          const isSubActive = subProject.id === highlightedSubProjectId;
+          subSelect.classList.toggle("active", isSubActive);
+          subSelect.setAttribute("aria-selected", String(isSubActive));
+          subSelect.textContent = subProject.name;
+          const subMeta = document.createElement("small");
+          const openSubTasks = scopedTasks.filter(
+            (task) =>
+              task.projectId === project.id && task.subProjectId === subProject.id && !task.completed,
+          ).length;
+          subMeta.textContent =
+            openSubTasks === 0
+              ? "No open tasks"
+              : `${openSubTasks} open task${openSubTasks === 1 ? "" : "s"}`;
+          subSelect.append(subMeta);
+
+          const subActions = document.createElement("div");
+          subActions.className = "selector-subitem-actions";
+          const renameSub = document.createElement("button");
+          renameSub.type = "button";
+          renameSub.className = "selector-sub-action";
+          renameSub.dataset.action = "edit-sub-project";
+          renameSub.dataset.subProjectId = subProject.id;
+          renameSub.textContent = "Rename";
+          const deleteSub = document.createElement("button");
+          deleteSub.type = "button";
+          deleteSub.className = "selector-sub-action";
+          deleteSub.dataset.action = "delete-sub-project";
+          deleteSub.dataset.subProjectId = subProject.id;
+          deleteSub.textContent = "Delete";
+          subActions.append(renameSub, deleteSub);
+
+          subItem.append(subSelect, subActions);
+          subList.append(subItem);
+        });
+        container.append(subList);
+      }
+
+      fragment.append(container);
     });
   }
 
@@ -1466,7 +1644,9 @@ const renderProjectDropdown = () => {
     if (highlightedProject) {
       labelText = highlightedProject.name;
     }
-    if (labelText === "Select project" && projects[0]) {
+    if (highlightedProject && highlightedSubProject) {
+      labelText = `${highlightedProject.name} · ${highlightedSubProject.name}`;
+    } else if (labelText === "Select project" && projects[0]) {
       labelText = projects[0].name;
     }
     elements.projectDropdownLabel.textContent = labelText;
@@ -1532,6 +1712,43 @@ const populateProjectOptions = () => {
       select.value = "inbox";
     }
   });
+};
+
+const populateSubProjectOptions = (
+  select,
+  projectId,
+  preferredValue = "",
+  { includeEmpty = true } = {},
+) => {
+  if (!select) return;
+  const fragment = document.createDocumentFragment();
+  const subProjects = projectId ? getSubProjectsForProject(projectId) : [];
+  if (includeEmpty) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "No sub-project";
+    fragment.append(option);
+  }
+  subProjects.forEach((subProject) => {
+    const option = document.createElement("option");
+    option.value = subProject.id;
+    option.textContent = subProject.name;
+    fragment.append(option);
+  });
+  select.replaceChildren(fragment);
+  const shouldRequireSelection = !includeEmpty;
+  if (shouldRequireSelection && subProjects.length) {
+    select.value = subProjects.some((entry) => entry.id === preferredValue)
+      ? preferredValue
+      : subProjects[0].id;
+  } else {
+    if (preferredValue && subProjects.some((entry) => entry.id === preferredValue)) {
+      select.value = preferredValue;
+    } else {
+      select.value = includeEmpty ? "" : "";
+    }
+  }
+  select.disabled = shouldRequireSelection && !subProjects.length;
 };
 
 const populateProjectCompanyOptions = (select, selectedId) => {
@@ -1638,6 +1855,11 @@ const updateTeamSelects = () => {
 const updateSectionSelects = () => {
   const currentProjectQuickAdd = elements.quickAddProject?.value ?? "inbox";
   populateSectionOptions(elements.quickAddSection, currentProjectQuickAdd, elements.quickAddSection?.value);
+  populateSubProjectOptions(
+    elements.quickAddSubProject,
+    currentProjectQuickAdd,
+    elements.quickAddSubProject?.value,
+  );
 
   if (elements.dialogForm) {
     const projectId = elements.dialogForm.elements.project.value ?? "inbox";
@@ -1645,6 +1867,12 @@ const updateSectionSelects = () => {
       elements.dialogForm.elements.section,
       projectId,
       elements.dialogForm.elements.section?.value
+    );
+    populateSubProjectOptions(
+      elements.dialogSubProjectSelect,
+      projectId,
+      elements.dialogSubProjectSelect?.value,
+      { includeEmpty: true },
     );
   }
 };
@@ -1691,12 +1919,27 @@ const describeView = () => {
       };
     }
   }
+  if (type === "sub-project") {
+    const subProject = getSubProjectById(value);
+    if (subProject) {
+      const project = getProjectById(subProject.projectId);
+      const company = project ? getCompanyById(project.companyId) : null;
+      const subtitleParts = [];
+      if (project) subtitleParts.push(project.name);
+      if (company) subtitleParts.push(company.name);
+      return {
+        title: subProject.name,
+        subtitle: subtitleParts.length ? subtitleParts.join(" · ") : "Sub-project board",
+      };
+    }
+  }
   return { title: "Tasks", subtitle: "Stay organised and on track." };
 };
 
 const updateSectionActions = () => {
   if (!elements.sectionActions) return;
-  const isProjectView = state.activeView.type === "project";
+  const isProjectView =
+    state.activeView.type === "project" || state.activeView.type === "sub-project";
   elements.sectionActions.hidden = !isProjectView;
 };
 
@@ -1728,6 +1971,9 @@ const shouldShowProjectChip = (task) => {
   if (state.activeView.type === "project" && state.activeView.value === task.projectId) {
     return false;
   }
+  if (state.activeView.type === "sub-project" && state.activeView.value === task.subProjectId) {
+    return false;
+  }
   return true;
 };
 
@@ -1747,6 +1993,7 @@ const renderTaskItem = (task) => {
   const assigneeEl = fragment.querySelector(".task-meta-assignee");
   const actionEl = fragment.querySelector(".task-meta-actions");
   const dueEl = fragment.querySelector(".task-meta-due");
+  const projectMetaEl = fragment.querySelector(".task-meta-project");
   const editBtn = fragment.querySelector('[data-action="edit"]');
 
   item.dataset.taskId = task.id;
@@ -1757,6 +2004,17 @@ const renderTaskItem = (task) => {
   assigneeEl.textContent = describeTaskAssignee(task);
   actionEl.textContent = describeTaskActionItems(task);
   dueEl.textContent = describeTaskDueLabel(task);
+  if (projectMetaEl) {
+    const subProject = task.subProjectId ? getSubProjectById(task.subProjectId) : null;
+    if (subProject) {
+      projectMetaEl.textContent = `Sub-project: ${subProject.name}`;
+    } else if (shouldShowProjectChip(task)) {
+      const project = getProjectById(task.projectId);
+      projectMetaEl.textContent = project ? `Project: ${project.name}` : "";
+    } else {
+      projectMetaEl.textContent = "";
+    }
+  }
 
   item.classList.toggle("completed", Boolean(task.completed));
   item.classList.toggle("deleted", Boolean(task.deletedAt));
@@ -1801,22 +2059,29 @@ const createEmptyState = (message) => {
   return empty;
 };
 
-const getDeletedTasksForProject = (projectId) =>
-  state.tasks.filter(
-    (task) => task.projectId === projectId && task.deletedAt && matchesSearch(task)
-  );
+const getDeletedTasksForScope = (projectId, subProjectId = "") =>
+  state.tasks.filter((task) => {
+    if (task.projectId !== projectId) return false;
+    if (subProjectId && task.subProjectId !== subProjectId) return false;
+    return Boolean(task.deletedAt) && matchesSearch(task);
+  });
 
-const setProjectGroupLimit = (projectId, groupId, value) => {
+const projectLimitKey = (groupId, subProjectId) =>
+  subProjectId ? `${groupId}:${subProjectId}` : groupId;
+
+const setProjectGroupLimit = (projectId, groupId, value, subProjectId = "") => {
   if (!projectId || !groupId) return;
   if (!state.projectSectionLimits[projectId]) {
     state.projectSectionLimits[projectId] = {};
   }
-  state.projectSectionLimits[projectId][groupId] = value;
+  const key = projectLimitKey(groupId, subProjectId);
+  state.projectSectionLimits[projectId][key] = value;
 };
 
-const resolveProjectGroupLimit = (projectId, groupId, total) => {
+const resolveProjectGroupLimit = (projectId, groupId, total, subProjectId = "") => {
   const projectLimits = state.projectSectionLimits[projectId] ?? {};
-  const raw = projectLimits[groupId];
+  const key = projectLimitKey(groupId, subProjectId);
+  const raw = projectLimits[key];
   if (Number.isFinite(raw) && raw > 0) {
     return Math.min(total, raw);
   }
@@ -1824,7 +2089,7 @@ const resolveProjectGroupLimit = (projectId, groupId, total) => {
   return total;
 };
 
-const renderProjectOverview = (projectId, tasks) => {
+const renderProjectOverview = (projectId, tasks, { subProjectId = "" } = {}) => {
   const container = document.createElement("div");
   container.className = "project-overview";
 
@@ -1838,7 +2103,7 @@ const renderProjectOverview = (projectId, tasks) => {
       );
 
     const total = groupTasks.length;
-    const limit = total ? resolveProjectGroupLimit(projectId, group.id, total) : 0;
+    const limit = total ? resolveProjectGroupLimit(projectId, group.id, total, subProjectId) : 0;
     const visibleTasks = limit ? groupTasks.slice(0, limit) : [];
 
     const card = document.createElement("article");
@@ -1857,6 +2122,7 @@ const renderProjectOverview = (projectId, tasks) => {
       moreButton.dataset.action = "project-overview-expand";
       moreButton.dataset.projectId = projectId;
       moreButton.dataset.groupId = group.id;
+      moreButton.dataset.subProjectId = subProjectId;
       moreButton.dataset.total = String(total);
       moreButton.textContent = "See more";
       header.append(moreButton);
@@ -1893,11 +2159,11 @@ const renderProjectOverview = (projectId, tasks) => {
   return container;
 };
 
-const expandProjectOverviewSection = (projectId, groupId, total) => {
+const expandProjectOverviewSection = (projectId, groupId, total, subProjectId = "") => {
   if (!projectId || !groupId) return;
   const numericTotal = Number.parseInt(total ?? "0", 10);
   const nextLimit = Number.isFinite(numericTotal) && numericTotal > 0 ? numericTotal : 50;
-  setProjectGroupLimit(projectId, groupId, nextLimit);
+  setProjectGroupLimit(projectId, groupId, nextLimit, subProjectId);
   renderTasks();
 };
 
@@ -2055,7 +2321,8 @@ const renderListView = (tasks) => {
     return;
   }
 
-  const isProjectScope = state.activeView.type === "project";
+  const context = getActiveProjectContext();
+  const isProjectScope = Boolean(context);
   const tabs = isProjectScope
     ? [
         { id: "active", label: "Active" },
@@ -2076,7 +2343,11 @@ const renderListView = (tasks) => {
   if (state.activeTaskTab === "active") {
     const activeTasks = openTasks(tasks);
     if (isProjectScope) {
-      panel.append(renderProjectOverview(state.activeView.value, activeTasks));
+      panel.append(
+        renderProjectOverview(context.projectId, activeTasks, {
+          subProjectId: context.subProjectId,
+        })
+      );
     } else {
       panel.append(
         renderSimpleTaskList(activeTasks.sort(compareTasks), "No tasks here yet. Add one to get started.")
@@ -2085,17 +2356,17 @@ const renderListView = (tasks) => {
   } else if (state.activeTaskTab === "completed") {
     const completed = completedTasks(tasks).sort(compareTasks);
     panel.append(
-      renderProjectSectionsList(state.activeView.value, completed, {
+      renderProjectSectionsList(context.projectId, completed, {
         includeEmpty: false,
         emptyMessage: "No completed tasks yet.",
       })
     );
   } else if (state.activeTaskTab === "deleted") {
-    const deleted = getDeletedTasksForProject(state.activeView.value).sort(
+    const deleted = getDeletedTasksForScope(context.projectId, context.subProjectId).sort(
       (a, b) => new Date(b.deletedAt ?? 0).getTime() - new Date(a.deletedAt ?? 0).getTime()
     );
     panel.append(
-      renderProjectSectionsList(state.activeView.value, deleted, {
+      renderProjectSectionsList(context.projectId, deleted, {
         includeEmpty: false,
         emptyMessage: "No deleted tasks archived for this project.",
         emptySectionMessage: "No deleted tasks for this section.",
@@ -2311,7 +2582,8 @@ const renderActivityFeed = () => {
   if (!elements.activityFeed) return;
   const fragment = document.createDocumentFragment();
   const limit = Number.isFinite(state.recentActivityLimit) && state.recentActivityLimit > 0 ? state.recentActivityLimit : 10;
-  const sorted = [...tasksForCompany()].sort((a, b) => {
+  const scopedTasks = tasksForCompany(state.activeCompanyId, { includeDeleted: true });
+  const sorted = [...scopedTasks].sort((a, b) => {
     const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
     const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
     return bTime - aTime;
@@ -2538,7 +2810,14 @@ const syncQuickAddSelectors = () => {
   if (elements.quickAddProject) {
     elements.quickAddProject.value = defaultProjectId;
   }
+  const preferredSubProject =
+    getActiveProjectContext()?.subProjectId ?? state.projectRecents?.[defaultProjectId] ?? "";
   populateSectionOptions(elements.quickAddSection, elements.quickAddProject?.value ?? "inbox");
+  populateSubProjectOptions(
+    elements.quickAddSubProject,
+    elements.quickAddProject?.value ?? "inbox",
+    preferredSubProject,
+  );
 };
 
 const render = () => {
@@ -2557,7 +2836,11 @@ const render = () => {
 
 const setViewMode = (mode) => {
   if (mode === state.viewMode) return;
-  if (mode === "board" && state.activeView.type !== "project") {
+  if (
+    mode === "board" &&
+    state.activeView.type !== "project" &&
+    state.activeView.type !== "sub-project"
+  ) {
     window.alert("Board view is available when a specific project is selected.");
     return;
   }
@@ -2581,12 +2864,26 @@ const setActiveView = (type, value) => {
       rememberProjectSelection(project.id);
     }
   }
+  if (type === "sub-project") {
+    const subProject = getSubProjectById(value);
+    if (!subProject) {
+      console.warn("Attempted to open unknown sub-project", value);
+      nextType = "view";
+      nextValue = "workspace";
+    } else {
+      rememberSubProjectSelection(subProject.id);
+    }
+  }
 
   state.activeView = { type: nextType, value: nextValue };
-  if (nextType !== "project") {
+  if (nextType !== "project" && nextType !== "sub-project") {
     state.activeTaskTab = "active";
   }
-  if (state.viewMode === "board" && nextType !== "project") {
+  if (
+    state.viewMode === "board" &&
+    nextType !== "project" &&
+    nextType !== "sub-project"
+  ) {
     state.viewMode = "list";
   }
   if (state.isUserguideOpen) {
@@ -2899,6 +3196,13 @@ const addTask = (payload) => {
   const sectionId = payload.sectionId || getDefaultSectionId(projectId);
   const now = new Date().toISOString();
   const createdAt = payload.createdAt ?? now;
+  let subProjectId = payload.subProjectId || "";
+  if (subProjectId) {
+    const subProject = getSubProjectById(subProjectId);
+    if (!subProject || subProject.projectId !== projectId) {
+      subProjectId = "";
+    }
+  }
 
   const task = {
     id: generateId("task"),
@@ -2910,6 +3214,7 @@ const addTask = (payload) => {
     priority: payload.priority,
     projectId,
     sectionId,
+    subProjectId,
     companyId: project?.companyId ?? DEFAULT_COMPANY.id,
     departmentId: payload.departmentId || "",
     assigneeId: payload.assigneeId || "",
@@ -2976,6 +3281,14 @@ const updateTask = (taskId, updates) => {
     completedAt = null;
   }
 
+  let nextSubProjectId = updates.subProjectId ?? previous.subProjectId ?? "";
+  if (nextSubProjectId) {
+    const subProject = getSubProjectById(nextSubProjectId);
+    if (!subProject || subProject.projectId !== nextProjectId) {
+      nextSubProjectId = "";
+    }
+  }
+
   const updatedTask = {
     ...previous,
     ...updates,
@@ -2985,6 +3298,7 @@ const updateTask = (taskId, updates) => {
     links: nextLinks,
     projectId: nextProjectId,
     sectionId: nextSectionId,
+    subProjectId: nextSubProjectId,
     companyId: project?.companyId ?? previous.companyId ?? DEFAULT_COMPANY.id,
     attachments: nextAttachments,
     completed: completedFlag,
@@ -3036,6 +3350,83 @@ const createProject = (name, companyId = state.activeCompanyId || DEFAULT_COMPAN
   rememberProjectSelection(project.id);
   setActiveView("project", project.id);
   return project;
+};
+
+const createSubProject = (name, projectId) => {
+  const parentProject = getProjectById(projectId);
+  if (!parentProject) {
+    window.alert("Select a valid project before creating a sub-project.");
+    return null;
+  }
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+  const exists = state.subProjects.some(
+    (entry) => entry.projectId === projectId && entry.name.toLowerCase() === trimmed.toLowerCase(),
+  );
+  if (exists) {
+    window.alert("A sub-project with this name already exists.");
+    return null;
+  }
+  const subProject = {
+    id: generateId("subproject"),
+    name: trimmed,
+    projectId,
+    createdAt: new Date().toISOString(),
+  };
+  state.subProjects.push(subProject);
+  saveSubProjects();
+  return subProject;
+};
+
+const renameSubProject = (subProjectId, nextName) => {
+  const subProject = getSubProjectById(subProjectId);
+  if (!subProject) return { success: false, error: "Sub-project not found." };
+  const trimmed = nextName.trim();
+  if (!trimmed) return { success: false, error: "Sub-project name is required." };
+  const exists = state.subProjects.some(
+    (entry) =>
+      entry.id !== subProjectId &&
+      entry.projectId === subProject.projectId &&
+      entry.name.toLowerCase() === trimmed.toLowerCase(),
+  );
+  if (exists) {
+    return { success: false, error: "Another sub-project already uses that name." };
+  }
+  subProject.name = trimmed;
+  subProject.updatedAt = new Date().toISOString();
+  saveSubProjects();
+  return { success: true };
+};
+
+const deleteSubProject = (subProjectId, { skipConfirm = false } = {}) => {
+  const subProject = getSubProjectById(subProjectId);
+  if (!subProject) return false;
+  if (!skipConfirm) {
+    const confirmed = window.confirm(`Delete the sub-project "${subProject.name}"? Tasks will stay on the parent project.`);
+    if (!confirmed) return false;
+  }
+  state.subProjects = state.subProjects.filter((entry) => entry.id !== subProjectId);
+  const limitMap = state.projectSectionLimits[subProject.projectId];
+  if (limitMap) {
+    Object.keys(limitMap).forEach((key) => {
+      if (key.endsWith(`:${subProjectId}`)) {
+        delete limitMap[key];
+      }
+    });
+  }
+  let tasksMutated = false;
+  state.tasks = state.tasks.map((task) => {
+    if (task.subProjectId !== subProjectId) return task;
+    tasksMutated = true;
+    return { ...task, subProjectId: "" };
+  });
+  saveSubProjects();
+  if (tasksMutated) {
+    saveTasks();
+  }
+  ensureProjectRecents();
+  savePreferences();
+  return true;
 };
 
 const createSection = (projectId, name) => {
@@ -3162,6 +3553,16 @@ const deleteProject = (projectId) => {
   const confirmed = window.confirm(`Delete the project "${project.name}" and all of its tasks?`);
   if (!confirmed) return false;
 
+  const relatedSubProjects = state.subProjects.filter((entry) => entry.projectId === projectId);
+  if (relatedSubProjects.length) {
+    const removeSet = new Set(relatedSubProjects.map((entry) => entry.id));
+    state.subProjects = state.subProjects.filter((entry) => entry.projectId !== projectId);
+    state.tasks = state.tasks.map((task) => {
+      if (!task.subProjectId || !removeSet.has(task.subProjectId)) return task;
+      return { ...task, subProjectId: "" };
+    });
+    saveSubProjects();
+  }
   ensureSectionForProject(DEFAULT_PROJECT.id);
   const defaultSectionId = getDefaultSectionId(DEFAULT_PROJECT.id);
   const company = getCompanyById(project.companyId);
@@ -3633,7 +4034,12 @@ const handleTaskActionClick = (event) => {
   if (!button) return;
   const action = button.dataset.action;
   if (action === "project-overview-expand") {
-    expandProjectOverviewSection(button.dataset.projectId, button.dataset.groupId, button.dataset.total);
+    expandProjectOverviewSection(
+      button.dataset.projectId,
+      button.dataset.groupId,
+      button.dataset.total,
+      button.dataset.subProjectId || "",
+    );
     return;
   }
   if (action === "edit-section") {
@@ -3690,6 +4096,18 @@ const prepareMeetingDialog = (projectId, task = null) => {
     elements.meetingProjectLabel.textContent = project ? project.name : "Inbox";
   }
   form.elements.projectId.value = projectId || "inbox";
+  const availableSubProjects = getSubProjectsForProject(projectId);
+  const hasSubProjects = availableSubProjects.length > 0;
+  populateSubProjectOptions(
+    elements.meetingSubProjectSelect,
+    projectId,
+    task?.subProjectId ?? "",
+    { includeEmpty: false },
+  );
+  const meetingSubmit = form.querySelector('button[type="submit"]');
+  if (meetingSubmit) {
+    meetingSubmit.disabled = !hasSubProjects;
+  }
   if (elements.meetingDepartment) {
     populateDepartmentOptions(elements.meetingDepartment, task?.departmentId || "");
   }
@@ -3719,12 +4137,20 @@ const prepareMeetingDialog = (projectId, task = null) => {
     elements.meetingDialogToggle.hidden = !isEditing;
     elements.meetingDialogToggle.disabled = !isEditing;
   }
+  if (elements.meetingDeleteButton) {
+    elements.meetingDeleteButton.hidden = !isEditing;
+    elements.meetingDeleteButton.disabled = !isEditing;
+  }
   updateMeetingDialogCompletionState(state.meetingCompletedDraft, completedAt);
   if (!isEditing && elements.meetingDialogStatus) {
     elements.meetingDialogStatus.textContent = "";
   }
 
-  if (elements.meetingError) elements.meetingError.textContent = "";
+  if (elements.meetingError) {
+    elements.meetingError.textContent = hasSubProjects
+      ? ""
+      : "Add a sub-project before logging a meeting.";
+  }
   registerAutosizeTextarea(form.elements.attendees);
   registerAutosizeTextarea(form.elements.notes);
   form.elements.attendees?.dispatchEvent(new Event("input", { bubbles: false }));
@@ -3769,6 +4195,10 @@ const closeMeetingDialog = () => {
   if (elements.meetingDialogStatus) {
     elements.meetingDialogStatus.textContent = "";
   }
+  if (elements.meetingDeleteButton) {
+    elements.meetingDeleteButton.hidden = true;
+    elements.meetingDeleteButton.disabled = true;
+  }
   if (dialog) {
     if (typeof dialog.close === "function") dialog.close();
     else dialog.removeAttribute("open");
@@ -3797,6 +4227,12 @@ const commitMeetingForm = ({ allowCreate = false } = {}) => {
   const projectId = form.elements.projectId.value || "inbox";
   ensureSectionForProject(projectId);
   const sectionId = getDefaultSectionId(projectId);
+  const subProjectId = form.elements.subProjectId?.value || "";
+  if (!subProjectId) {
+    if (elements.meetingError) elements.meetingError.textContent = "Select a sub-project.";
+    elements.meetingSubProjectSelect?.focus();
+    return false;
+  }
   const links = collectLinks(elements.meetingLinksList);
   const existing = state.tasks.find((task) => task.id === state.editingMeetingId);
   const metadata =
@@ -3814,6 +4250,7 @@ const commitMeetingForm = ({ allowCreate = false } = {}) => {
     priority: form.elements.priority.value || "medium",
     projectId,
     sectionId,
+    subProjectId,
     departmentId: form.elements.department.value || "",
     kind: "meeting",
     source: existing?.source ?? "manual",
@@ -3905,6 +4342,15 @@ const handleMeetingFormClick = (event) => {
     removeMeetingActionItem(id);
     return;
   }
+  if (action === "delete-meeting") {
+    event.preventDefault();
+    if (!state.editingMeetingId) return;
+    const confirmed = window.confirm("Delete this meeting? This cannot be undone.");
+    if (!confirmed) return;
+    removeTask(state.editingMeetingId);
+    closeMeetingDialog();
+    return;
+  }
   if (action === "close-meeting") {
     event.preventDefault();
     autoSaveMeetingDialog();
@@ -3920,6 +4366,18 @@ const prepareEmailDialog = (projectId, task = null) => {
     elements.emailProjectLabel.textContent = project ? project.name : "Inbox";
   }
   form.elements.projectId.value = projectId || "inbox";
+  const availableSubProjects = getSubProjectsForProject(projectId);
+  const hasSubProjects = availableSubProjects.length > 0;
+  populateSubProjectOptions(
+    elements.emailSubProjectSelect,
+    projectId,
+    task?.subProjectId ?? "",
+    { includeEmpty: false },
+  );
+  const emailSubmit = form.querySelector('button[type="submit"]');
+  if (emailSubmit) {
+    emailSubmit.disabled = !hasSubProjects;
+  }
   if (elements.emailDepartment) {
     populateDepartmentOptions(elements.emailDepartment, task?.departmentId || "");
   }
@@ -3943,11 +4401,19 @@ const prepareEmailDialog = (projectId, task = null) => {
     elements.emailDialogToggle.hidden = !isEditing;
     elements.emailDialogToggle.disabled = !isEditing;
   }
+  if (elements.emailDeleteButton) {
+    elements.emailDeleteButton.hidden = !isEditing;
+    elements.emailDeleteButton.disabled = !isEditing;
+  }
   updateEmailDialogCompletionState(state.emailCompletedDraft, completedAt);
   if (!isEditing && elements.emailDialogStatus) {
     elements.emailDialogStatus.textContent = "";
   }
-  if (elements.emailError) elements.emailError.textContent = "";
+  if (elements.emailError) {
+    elements.emailError.textContent = hasSubProjects
+      ? ""
+      : "Add a sub-project before logging an email.";
+  }
   registerAutosizeTextarea(form.elements.notes);
   form.elements.notes?.dispatchEvent(new Event("input", { bubbles: false }));
 };
@@ -3984,6 +4450,10 @@ const closeEmailDialog = () => {
   if (elements.emailDialogStatus) {
     elements.emailDialogStatus.textContent = "";
   }
+  if (elements.emailDeleteButton) {
+    elements.emailDeleteButton.hidden = true;
+    elements.emailDeleteButton.disabled = true;
+  }
   if (dialog) {
     if (typeof dialog.close === "function") dialog.close();
     else dialog.removeAttribute("open");
@@ -4012,6 +4482,14 @@ const commitEmailForm = ({ allowCreate = false } = {}) => {
   const projectId = form.elements.projectId.value || "inbox";
   ensureSectionForProject(projectId);
   const sectionId = getDefaultSectionId(projectId);
+  const subProjectId = form.elements.subProjectId?.value || "";
+  if (!subProjectId) {
+    if (elements.emailError) {
+      elements.emailError.textContent = "Select a sub-project.";
+    }
+    elements.emailSubProjectSelect?.focus();
+    return false;
+  }
   const links = collectLinks(elements.emailLinksList);
   const existing = state.tasks.find((task) => task.id === state.editingEmailId);
   const metadata =
@@ -4027,6 +4505,7 @@ const commitEmailForm = ({ allowCreate = false } = {}) => {
     priority: form.elements.priority.value || "medium",
     projectId,
     sectionId,
+    subProjectId,
     departmentId: form.elements.department.value || "",
     kind: "email",
     source: existing?.source ?? "manual",
@@ -4095,6 +4574,15 @@ const handleEmailFormClick = (event) => {
     }
     return;
   }
+  if (action === "delete-email") {
+    event.preventDefault();
+    if (!state.editingEmailId) return;
+    const confirmed = window.confirm("Delete this email? This cannot be undone.");
+    if (!confirmed) return;
+    removeTask(state.editingEmailId);
+    closeEmailDialog();
+    return;
+  }
   if (action === "close-email") {
     event.preventDefault();
     autoSaveEmailDialog();
@@ -4112,6 +4600,7 @@ const handleQuickAddSubmit = async (event) => {
   elements.quickAddError.textContent = "";
 
   const projectId = data.get("project") || "inbox";
+  const subProjectId = data.get("subProject") || "";
   const sectionId = data.get("section") || getDefaultSectionId(projectId);
   const attachments = elements.quickAddAttachments ? await readFilesAsData(elements.quickAddAttachments.files) : [];
 
@@ -4123,6 +4612,7 @@ const handleQuickAddSubmit = async (event) => {
       priority: data.get("priority") || "medium",
       projectId,
       sectionId,
+      subProjectId,
       departmentId: data.get("department") || "",
       assigneeId: data.get("assignee") || "",
       attachments,
@@ -4320,6 +4810,11 @@ const openTaskDialog = (taskId) => {
   populateProjectOptions();
   updateTeamSelects();
   populateSectionOptions(elements.dialogForm.elements.section, task.projectId, task.sectionId);
+  populateSubProjectOptions(
+    elements.dialogSubProjectSelect,
+    task.projectId,
+    task.subProjectId ?? "",
+  );
 
   elements.dialogForm.title.value = task.title;
   elements.dialogForm.description.value = task.description ?? "";
@@ -4408,7 +4903,11 @@ const navigateToTask = (taskId) => {
   if (isInbox) {
     setActiveView("view", "workspace");
   } else {
-    setActiveView("project", task.projectId);
+    if (task.subProjectId) {
+      setActiveView("sub-project", task.subProjectId);
+    } else {
+      setActiveView("project", task.projectId);
+    }
   }
 
   window.requestAnimationFrame(() => {
@@ -4428,6 +4927,7 @@ const commitTaskDialogChanges = () => {
 
   const projectId = data.get("project") || "inbox";
   const sectionId = data.get("section") || getDefaultSectionId(projectId);
+  const subProjectId = data.get("subProject") || "";
 
   try {
     updateTask(state.editingTaskId, {
@@ -4437,6 +4937,7 @@ const commitTaskDialogChanges = () => {
       priority: data.get("priority") || "medium",
       projectId,
       sectionId,
+      subProjectId,
       departmentId: data.get("department") || "",
       assigneeId: data.get("assignee") || "",
       attachments: cloneAttachments(state.dialogAttachmentDraft),
@@ -4498,6 +4999,7 @@ const handleDialogClick = (event) => {
 const handleDialogProjectChange = () => {
   const projectId = elements.dialogForm.elements.project.value;
   populateSectionOptions(elements.dialogForm.elements.section, projectId);
+  populateSubProjectOptions(elements.dialogSubProjectSelect, projectId);
 };
 
 const handleDialogDepartmentChange = () => {
@@ -4508,6 +5010,7 @@ const handleDialogDepartmentChange = () => {
 const handleQuickAddProjectChange = () => {
   const projectId = elements.quickAddProject.value;
   populateSectionOptions(elements.quickAddSection, projectId);
+  populateSubProjectOptions(elements.quickAddSubProject, projectId);
 };
 
 const handleQuickAddDepartmentChange = () => {
@@ -4762,6 +5265,51 @@ const openSectionEditor = (sectionId) => {
 };
 
 const handleProjectMenuClick = (event) => {
+  const addSubButton = event.target.closest('[data-action="add-sub-project"]');
+  if (addSubButton) {
+    event.preventDefault();
+    const projectId = addSubButton.dataset.projectId;
+    const name = window.prompt("Sub-project name");
+    if (name) {
+      const created = createSubProject(name, projectId);
+      if (created) {
+        render();
+      }
+    }
+    return;
+  }
+
+  const editSubButton = event.target.closest('[data-action="edit-sub-project"]');
+  if (editSubButton) {
+    event.preventDefault();
+    const subProjectId = editSubButton.dataset.subProjectId;
+    const subProject = getSubProjectById(subProjectId);
+    if (!subProject) {
+      window.alert("Sub-project not found.");
+      return;
+    }
+    const nextName = window.prompt("Rename sub-project", subProject.name);
+    if (nextName) {
+      const result = renameSubProject(subProjectId, nextName);
+      if (!result.success) {
+        window.alert(result.error);
+      } else {
+        render();
+      }
+    }
+    return;
+  }
+
+  const deleteSubButton = event.target.closest('[data-action="delete-sub-project"]');
+  if (deleteSubButton) {
+    event.preventDefault();
+    const subProjectId = deleteSubButton.dataset.subProjectId;
+    if (deleteSubProject(subProjectId)) {
+      render();
+    }
+    return;
+  }
+
   const addButton = event.target.closest('[data-action="add-project-inline"]');
   if (addButton) {
     if (!state.activeCompanyId) {
@@ -4779,6 +5327,13 @@ const handleProjectMenuClick = (event) => {
   const editButton = event.target.closest('[data-action="edit-project"]');
   if (editButton) {
     openProjectEditor(editButton.dataset.projectId);
+    closeDropdown("project");
+    return;
+  }
+
+  const subSelect = event.target.closest('button[data-select="sub-project"]');
+  if (subSelect) {
+    setActiveView("sub-project", subSelect.dataset.subProjectId);
     closeDropdown("project");
     return;
   }
@@ -5992,6 +6547,7 @@ const handleDepartmentsFormClick = (event) => {
 const hydrateStateFromLocal = () => {
   state.tasks = loadJSON(STORAGE_KEYS.tasks, []);
   state.projects = loadJSON(STORAGE_KEYS.projects, []);
+  state.subProjects = loadJSON(STORAGE_KEYS.subProjects, []);
   state.sections = loadJSON(STORAGE_KEYS.sections, []);
   state.companies = loadJSON(STORAGE_KEYS.companies, [{ ...DEFAULT_COMPANY }]);
   state.members = loadJSON(STORAGE_KEYS.members, []);
@@ -6008,6 +6564,7 @@ const hydrateStateFromLocal = () => {
   ensureDefaultCompany();
   ensureDefaultProject();
   ensureProjectsHaveCompany();
+  ensureSubProjectsValid();
   ensureDefaultDepartment();
   ensureAllProjectsHaveSections();
   state.tasks.forEach(ensureTaskDefaults);
@@ -6016,13 +6573,12 @@ const hydrateStateFromLocal = () => {
 };
 
 const hydrateState = async () => {
-  applyStoredPreferences();
+  hydrateStateFromLocal();
+  render();
   try {
     await startWorkspaceSync();
   } catch (error) {
     console.error('Failed to start Firestore sync, falling back to cached data.', error);
-    hydrateStateFromLocal();
-    render();
   }
 };
 

@@ -1087,6 +1087,64 @@ header.dragging-section {
   color: #94a3b8;
 }
 
+.selector-sublist {
+  list-style: none;
+  margin: 0.15rem 0 0.35rem 1.25rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.selector-subitem {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.selector-subitem button[data-select="sub-project"] {
+  flex: 1;
+  border: none;
+  background: rgba(241, 245, 249, 0.9);
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #0f172a;
+  text-align: left;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.selector-subitem button[data-select="sub-project"].active {
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--accent);
+}
+
+.selector-subitem button[data-select="sub-project"] small {
+  font-size: 0.72rem;
+  color: #94a3b8;
+}
+
+.selector-subitem-actions {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.selector-sub-action {
+  border: none;
+  background: transparent;
+  font-size: 0.72rem;
+  color: #94a3b8;
+  padding: 0.25rem 0.35rem;
+  border-radius: 0.4rem;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.selector-sub-action:hover {
+  color: var(--accent);
+  background: rgba(37, 99, 235, 0.08);
+}
+
 .selector-item-actions {
   display: flex;
   flex-direction: column;
