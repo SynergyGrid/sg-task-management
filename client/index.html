@@ -313,6 +313,45 @@
         </section>
 
         <section id="listView" class="space-y-6">
+          <div class="bg-white border border-slate-200 rounded-2xl shadow-sm px-6 py-4 flex flex-wrap gap-3 items-end" id="taskFilters">
+            <div class="filter-field">
+              <label class="filter-label" for="filterMember">Member</label>
+              <select id="filterMember" class="field-input" data-filter="member">
+                <option value="">All members</option>
+              </select>
+            </div>
+            <div class="filter-field">
+              <label class="filter-label" for="filterDepartment">Department</label>
+              <select id="filterDepartment" class="field-input" data-filter="department">
+                <option value="">All departments</option>
+              </select>
+            </div>
+            <div class="filter-field">
+              <label class="filter-label" for="filterPriority">Priority</label>
+              <select id="filterPriority" class="field-input" data-filter="priority">
+                <option value="">All priorities</option>
+                <option value="critical">Critical</option>
+                <option value="very-high">Very high</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+                <option value="optional">Optional</option>
+              </select>
+            </div>
+            <div class="filter-field">
+              <label class="filter-label" for="filterDue">Due date</label>
+              <select id="filterDue" class="field-input" data-filter="due">
+                <option value="">All dates</option>
+                <option value="overdue">Overdue</option>
+                <option value="today">Due today</option>
+                <option value="week">Due this week</option>
+                <option value="none">No due date</option>
+              </select>
+            </div>
+            <div class="ml-auto">
+              <button type="button" class="ghost-button" data-action="clear-filters">Clear filters</button>
+            </div>
+          </div>
           <div class="bg-white border border-slate-200 rounded-2xl shadow-sm">
             <div class="px-6 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
               <h3 class="text-base font-semibold text-slate-900" id="viewTitle">Inbox</h3>

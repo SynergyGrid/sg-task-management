@@ -88,6 +88,7 @@ const MIN_TEXTAREA_HEIGHT = 72;
 const MAX_TEXTAREA_HEIGHT = 720;
 const THREAD_MESSAGE_MIN_HEIGHT = 40;
 const THREAD_MESSAGE_MAX_HEIGHT = 640;
+const FILTER_MEMBER_UNASSIGNED = "__unassigned";
 const AUTOSIZE_RESET_KEYS = new Set([
   "quick-add-description",
   "dialog-description",
@@ -218,6 +219,12 @@ const state = {
   isEditingUserguide: false,
   openDropdown: null,
   dialogAttachmentDraft: [],
+  filters: {
+    member: "",
+    department: "",
+    priority: "",
+    due: "",
+  },
   projectSectionLimits: {},
   recentActivityLimit: 10,
   importJob: {
@@ -291,6 +298,12 @@ const elements = {
   taskTemplate: document.getElementById("taskItemTemplate"),
   activeTasksMetric: document.getElementById("active-tasks"),
   activityFeed: document.getElementById("activity-feed"),
+  filterBar: document.getElementById("taskFilters"),
+  filterMember: document.getElementById("filterMember"),
+  filterDepartment: document.getElementById("filterDepartment"),
+  filterPriority: document.getElementById("filterPriority"),
+  filterDue: document.getElementById("filterDue"),
+  filterClear: document.querySelector('[data-action="clear-filters"]'),
   userguidePanel: document.getElementById("userguidePanel"),
   companyTabs: document.getElementById("companyTabs"),
   companyTabsEmpty: document.getElementById("companyTabsEmpty"),
@@ -1192,6 +1205,53 @@ const matchesSearch = (task) => {
   );
 };
 
+const isFilterActive = () => Object.values(state.filters || {}).some(Boolean);
+
+const matchesFilters = (task) => {
+  if (!state.filters) return true;
+  const { member, department, priority, due } = state.filters;
+  if (member) {
+    if (member === FILTER_MEMBER_UNASSIGNED) {
+      if (task.assigneeId) return false;
+    } else if (task.assigneeId !== member) {
+      return false;
+    }
+  }
+  if (department && task.departmentId !== department) {
+    return false;
+  }
+  if (priority) {
+    const taskPriority = typeof task.priority === "string" ? task.priority : "medium";
+    if (taskPriority !== priority) {
+      return false;
+    }
+  }
+  if (due) {
+    const dueDate = task.dueDate ? new Date(task.dueDate) : null;
+    const hasValidDate = dueDate && !Number.isNaN(dueDate.getTime());
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (due === "none") {
+      if (hasValidDate) return false;
+    } else if (!hasValidDate) {
+      return false;
+    } else {
+      const dueDay = new Date(dueDate);
+      dueDay.setHours(0, 0, 0, 0);
+      if (due === "overdue") {
+        if (!(dueDay < today && !task.completed)) return false;
+      } else if (due === "today") {
+        if (dueDay.getTime() !== today.getTime()) return false;
+      } else if (due === "week") {
+        const weekEnd = new Date(today);
+        weekEnd.setDate(today.getDate() + 7);
+        if (dueDay < today || dueDay > weekEnd) return false;
+      }
+    }
+  }
+  return true;
+};
+
 const setSearchTerm = (value) => {
   const trimmed = value.trim();
   state.searchTerm = trimmed;
@@ -1223,7 +1283,7 @@ const renderSearchResults = () => {
     return;
   }
   const matches = state.tasks
-    .filter((task) => !task.deletedAt && matchesSearch(task))
+    .filter((task) => !task.deletedAt && matchesSearch(task) && matchesFilters(task))
     .sort(
       (a, b) =>
         new Date(b.updatedAt || b.createdAt || 0).getTime() -
@@ -1275,7 +1335,9 @@ const renderSearchResults = () => {
 };
 
 const tasksForCurrentView = () =>
-  state.tasks.filter((task) => !task.deletedAt && matchesActiveView(task) && matchesSearch(task));
+  state.tasks.filter(
+    (task) => !task.deletedAt && matchesActiveView(task) && matchesSearch(task) && matchesFilters(task),
+  );
 
 const openTasks = (tasks) => tasks.filter((task) => !task.completed);
 const completedTasks = (tasks) => tasks.filter((task) => task.completed);
@@ -1859,6 +1921,28 @@ const expandProjectOverviewSection = (projectId, groupId, total) => {
   const numericTotal = Number.parseInt(total ?? "0", 10);
   const nextLimit = Number.isFinite(numericTotal) && numericTotal > 0 ? numericTotal : 50;
   setProjectGroupLimit(projectId, groupId, nextLimit);
+  renderTasks();
+};
+
+const handleFilterChange = (event) => {
+  const select = event.target.closest("select[data-filter]");
+  if (!select || !state.filters) return;
+  const key = select.dataset.filter;
+  if (!key) return;
+  const value = select.value || "";
+  if (state.filters[key] === value) return;
+  state.filters = { ...state.filters, [key]: value };
+  renderFilterBar();
+  renderTasks();
+};
+
+const handleFilterBarClick = (event) => {
+  const button = event.target.closest('[data-action="clear-filters"]');
+  if (!button || !state.filters) return;
+  event.preventDefault();
+  if (!isFilterActive()) return;
+  state.filters = { member: "", department: "", priority: "", due: "" };
+  renderFilterBar();
   renderTasks();
 };
 
@@ -2489,6 +2573,100 @@ const renderSidebar = () => {
   renderActivityFeed();
 };
 
+const renderFilterBar = () => {
+  if (!elements.filterBar || !state.filters) return;
+  const updateFilterValue = (key, value) => {
+    state.filters = { ...state.filters, [key]: value };
+  };
+
+  if (elements.filterMember) {
+    const fragment = document.createDocumentFragment();
+    const allOption = document.createElement("option");
+    allOption.value = "";
+    allOption.textContent = "All members";
+    fragment.append(allOption);
+
+    const unassignedOption = document.createElement("option");
+    unassignedOption.value = FILTER_MEMBER_UNASSIGNED;
+    unassignedOption.textContent = "Unassigned";
+    fragment.append(unassignedOption);
+
+    [...state.members]
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }))
+      .forEach((member) => {
+        const option = document.createElement("option");
+        option.value = member.id;
+        option.textContent = member.name;
+        fragment.append(option);
+      });
+
+    elements.filterMember.replaceChildren(fragment);
+    let memberValue = state.filters.member || "";
+    if (
+      memberValue &&
+      memberValue !== FILTER_MEMBER_UNASSIGNED &&
+      !state.members.some((member) => member.id === memberValue)
+    ) {
+      memberValue = "";
+      updateFilterValue("member", "");
+    }
+    elements.filterMember.value = memberValue;
+  }
+
+  if (elements.filterDepartment) {
+    const fragment = document.createDocumentFragment();
+    const allOption = document.createElement("option");
+    allOption.value = "";
+    allOption.textContent = "All departments";
+    fragment.append(allOption);
+
+    [...state.departments]
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }))
+      .forEach((department) => {
+        const option = document.createElement("option");
+        option.value = department.id;
+        option.textContent = department.name;
+        fragment.append(option);
+      });
+
+    elements.filterDepartment.replaceChildren(fragment);
+    let departmentValue = state.filters.department || "";
+    if (departmentValue && !state.departments.some((dept) => dept.id === departmentValue)) {
+      departmentValue = "";
+      updateFilterValue("department", "");
+    }
+    elements.filterDepartment.value = departmentValue;
+  }
+
+  if (elements.filterPriority) {
+    const allowedPriorities = new Set([
+      "",
+      "critical",
+      "very-high",
+      "high",
+      "medium",
+      "low",
+      "optional",
+    ]);
+    if (!allowedPriorities.has(state.filters.priority || "")) {
+      updateFilterValue("priority", "");
+    }
+    elements.filterPriority.value = state.filters.priority || "";
+  }
+
+  if (elements.filterDue) {
+    const allowedDue = new Set(["", "overdue", "today", "week", "none"]);
+    if (!allowedDue.has(state.filters.due || "")) {
+      updateFilterValue("due", "");
+    }
+    elements.filterDue.value = state.filters.due || "";
+  }
+
+  if (elements.filterClear) {
+    elements.filterClear.disabled = !isFilterActive();
+  }
+};
+
 const syncQuickAddSelectors = () => {
   const preferred = getPreferredProjectId();
   const defaultProjectId =
@@ -2502,6 +2680,7 @@ const syncQuickAddSelectors = () => {
 const render = () => {
   applySettings();
   renderSidebar();
+  renderFilterBar();
   renderHeader();
   updateDashboardMetrics();
   populateProjectOptions();
@@ -6246,6 +6425,11 @@ const registerEventListeners = () => {
   elements.projectDropdownMenu?.addEventListener("click", handleProjectMenuClick);
   elements.companyForm?.addEventListener("submit", handleCompanyFormSubmit);
   elements.companyForm?.addEventListener("click", handleCompanyFormClick);
+  elements.filterMember?.addEventListener("change", handleFilterChange);
+  elements.filterDepartment?.addEventListener("change", handleFilterChange);
+  elements.filterPriority?.addEventListener("change", handleFilterChange);
+  elements.filterDue?.addEventListener("change", handleFilterChange);
+  elements.filterBar?.addEventListener("click", handleFilterBarClick);
   elements.companyDialog?.addEventListener("cancel", (event) => {
     event.preventDefault();
     closeCompanyDialog();
