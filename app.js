@@ -2075,11 +2075,11 @@ const renderAllTaskOverview = () => {
   let scopedTasks = [];
   if (state.activeAllTab === "created") {
     scopedTasks = state.tasks
-      .filter((task) => !task.deletedAt && matchesSearch(task))
+      .filter((task) => !task.deletedAt && matchesSearch(task) && matchesFilters(task))
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   } else if (state.activeAllTab === "updated") {
     scopedTasks = state.tasks
-      .filter((task) => !task.deletedAt && matchesSearch(task))
+      .filter((task) => !task.deletedAt && matchesSearch(task) && matchesFilters(task))
       .sort(
         (a, b) =>
           new Date(b.updatedAt || b.createdAt).getTime() -
@@ -2087,11 +2087,11 @@ const renderAllTaskOverview = () => {
       );
   } else if (state.activeAllTab === "deleted") {
     scopedTasks = state.tasks
-      .filter((task) => task.deletedAt && matchesSearch(task))
+      .filter((task) => task.deletedAt && matchesSearch(task) && matchesFilters(task))
       .sort((a, b) => new Date(b.deletedAt ?? 0).getTime() - new Date(a.deletedAt ?? 0).getTime());
   } else {
     scopedTasks = state.tasks
-      .filter((task) => task.completed && matchesSearch(task))
+      .filter((task) => task.completed && matchesSearch(task) && matchesFilters(task))
       .sort((a, b) => {
         const aTime = new Date(a.completedAt || a.updatedAt || a.createdAt || 0).getTime();
         const bTime = new Date(b.completedAt || b.updatedAt || b.createdAt || 0).getTime();
