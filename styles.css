@@ -726,10 +726,32 @@ body {
 .modal-card {
   background: #ffffff;
   border-radius: 1.5rem;
-  width: min(560px, calc(100vw - 2.5rem));
+  width: min(780px, calc(100vw - 2rem));
+  max-width: calc(100vw - 1.5rem);
   box-shadow: 0 35px 90px -40px rgba(15, 23, 42, 0.65);
   border: 1px solid rgba(148, 163, 184, 0.18);
   overflow: hidden;
+  position: relative;
+}
+
+.modal-card[data-resizable="true"] {
+  resize: horizontal;
+  overflow: auto;
+  min-width: 520px;
+  max-width: min(1100px, calc(100vw - 1.5rem));
+}
+
+.modal-card[data-resizable="true"]::after {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  right: 1rem;
+  bottom: 1rem;
+  border-right: 2px solid rgba(148, 163, 184, 0.8);
+  border-bottom: 2px solid rgba(148, 163, 184, 0.8);
+  opacity: 0.6;
+  pointer-events: none;
 }
 
 .modal-header,
