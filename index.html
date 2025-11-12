@@ -232,6 +232,10 @@
 
             <form id="quickAddForm" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 quick-add-card hidden" novalidate>
               <div class="sm:col-span-2 lg:col-span-2 xl:col-span-3">
+                <label class="field-label">Project</label>
+                <select name="project" class="field-input"></select>
+              </div>
+              <div class="sm:col-span-2 lg:col-span-2 xl:col-span-3">
                 <label class="field-label">Title</label>
                 <input type="text" name="title" placeholder="Launch planning sync" maxlength="160" required class="field-input" />
                 <small class="text-xs text-rose-500" data-error-for="title"></small>
@@ -239,6 +243,15 @@
               <div class="sm:col-span-2 lg:col-span-2 xl:col-span-3">
                 <label class="field-label">Description</label>
                 <textarea name="description" rows="1" placeholder="Context, blockers, next steps" class="field-input"></textarea>
+              </div>
+              <div class="sm:col-span-2 lg:col-span-3 xl:col-span-3">
+                <div class="field-group">
+                  <div class="flex items-center justify-between">
+                    <span class="field-label">Links</span>
+                    <button type="button" class="ghost-button small" data-action="quick-add-link">Add link</button>
+                  </div>
+                  <ul class="link-list" data-quick-links></ul>
+                </div>
               </div>
               <div>
                 <label class="field-label">Due</label>
@@ -256,34 +269,21 @@
                 </select>
               </div>
               <div>
-                <label class="field-label">Project</label>
-                <select name="project" class="field-input"></select>
-              </div>
-              <div>
-                <label class="field-label">Section</label>
-                <select name="section" class="field-input"></select>
+                <label class="field-label">Member</label>
+                <select name="assignee" class="field-input"></select>
               </div>
               <div>
                 <label class="field-label">Department</label>
                 <select name="department" class="field-input"></select>
               </div>
               <div>
-                <label class="field-label">Member</label>
-                <select name="assignee" class="field-input"></select>
+                <label class="field-label">Section</label>
+                <select name="section" class="field-input"></select>
               </div>
               <div class="sm:col-span-2 lg:col-span-3 xl:col-span-3">
                 <label class="field-label">Attachments</label>
                 <input type="file" name="attachments" multiple class="field-input" />
                 <ul class="attachment-list" data-attachment-list></ul>
-              </div>
-              <div class="sm:col-span-2 lg:col-span-3 xl:col-span-3">
-                <div class="field-group">
-                  <div class="flex items-center justify-between">
-                    <span class="field-label">Links</span>
-                    <button type="button" class="ghost-button small" data-action="quick-add-link">Add link</button>
-                  </div>
-                  <ul class="link-list" data-quick-links></ul>
-                </div>
               </div>
               <div class="sm:col-span-2 lg:col-span-3 xl:col-span-6 flex justify-end items-center gap-3">
                 <p class="quick-add-error flex-1 text-sm text-rose-500" role="alert"></p>
@@ -340,6 +340,10 @@
       </header>
       <div class="modal-body space-y-4">
         <label class="form-field">
+          <span class="field-label">Project</span>
+          <select name="project" class="field-input"></select>
+        </label>
+        <label class="form-field">
           <span class="field-label">Title</span>
           <input type="text" name="title" required maxlength="160" class="field-input" />
         </label>
@@ -347,6 +351,13 @@
           <span class="field-label">Description</span>
           <textarea name="description" rows="4" class="field-input"></textarea>
         </label>
+        <div class="field-group">
+          <div class="flex items-center justify-between">
+            <span class="field-label">Links</span>
+            <button type="button" class="ghost-button small" data-action="dialog-add-link">Add link</button>
+          </div>
+          <ul class="link-list" data-dialog-links></ul>
+        </div>
         <div class="form-row">
           <label class="form-field">
             <span class="field-label">Due date</span>
@@ -364,36 +375,25 @@
             </select>
           </label>
         </div>
-        <label class="form-field">
-          <span class="field-label">Section</span>
-          <select name="section" class="field-input"></select>
-        </label>
         <div class="form-row">
-          <label class="form-field">
-            <span class="field-label">Department</span>
-            <select name="department" class="field-input"></select>
-          </label>
           <label class="form-field">
             <span class="field-label">Member</span>
             <select name="assignee" class="field-input"></select>
           </label>
+          <label class="form-field">
+            <span class="field-label">Department</span>
+            <select name="department" class="field-input"></select>
+          </label>
         </div>
+        <label class="form-field">
+          <span class="field-label">Section</span>
+          <select name="section" class="field-input"></select>
+        </label>
         <label class="form-field">
           <span class="field-label">Attachments</span>
           <input type="file" name="attachments" multiple class="field-input" />
         </label>
         <ul class="attachment-list" data-dialog-attachment-list></ul>
-        <div class="field-group">
-          <div class="flex items-center justify-between">
-            <span class="field-label">Links</span>
-            <button type="button" class="ghost-button small" data-action="dialog-add-link">Add link</button>
-          </div>
-          <ul class="link-list" data-dialog-links></ul>
-        </div>
-        <label class="form-field">
-          <span class="field-label">Project</span>
-          <select name="project" class="field-input"></select>
-        </label>
         <label class="checkbox-field">
           <input type="checkbox" name="completed" />
           <span>Mark as completed</span>
@@ -437,6 +437,25 @@
           <span class="field-label">Title</span>
           <input type="text" name="title" required class="field-input" placeholder="Sprint planning sync" />
         </label>
+        <label class="form-field">
+          <span class="field-label">Description</span>
+          <textarea name="notes" rows="3" class="field-input" placeholder="Agenda, context and decisions"></textarea>
+        </label>
+        <label class="checkbox-field">
+          <input type="checkbox" name="actionItems" />
+          <span>Action items captured</span>
+        </label>
+        <label class="form-field">
+          <span class="field-label">Attendees</span>
+          <textarea name="attendees" rows="2" class="field-input" placeholder="Alex, Jamie, product squad"></textarea>
+        </label>
+        <div class="field-group">
+          <div class="flex items-center justify-between">
+            <span class="field-label">Links</span>
+            <button type="button" class="ghost-button small" data-action="meeting-add-link">Add link</button>
+          </div>
+          <ul class="link-list" data-meeting-links></ul>
+        </div>
         <div class="form-row">
           <label class="form-field">
             <span class="field-label">Date</span>
@@ -470,25 +489,6 @@
             </select>
           </label>
         </div>
-        <label class="form-field">
-          <span class="field-label">Attendees</span>
-          <textarea name="attendees" rows="2" class="field-input" placeholder="Alex, Jamie, product squad"></textarea>
-        </label>
-        <label class="checkbox-field">
-          <input type="checkbox" name="actionItems" />
-          <span>Action items captured</span>
-        </label>
-        <label class="form-field">
-          <span class="field-label">Notes</span>
-          <textarea name="notes" rows="3" class="field-input" placeholder="Agenda, context and decisions"></textarea>
-        </label>
-        <div class="field-group">
-          <div class="flex items-center justify-between">
-            <span class="field-label">Links</span>
-            <button type="button" class="ghost-button small" data-action="meeting-add-link">Add link</button>
-          </div>
-          <ul class="link-list" data-meeting-links></ul>
-        </div>
         <p class="form-error" data-meeting-error></p>
       </div>
       <footer class="modal-footer">
@@ -513,6 +513,17 @@
           <span class="field-label">Title</span>
           <input type="text" name="title" required class="field-input" placeholder="Client follow-up" />
         </label>
+        <label class="form-field">
+          <span class="field-label">Description</span>
+          <textarea name="notes" rows="3" class="field-input" placeholder="Key decisions, follow-ups, attachments"></textarea>
+        </label>
+        <div class="field-group">
+          <div class="flex items-center justify-between">
+            <span class="field-label">Links</span>
+            <button type="button" class="ghost-button small" data-action="email-add-link">Add link</button>
+          </div>
+          <ul class="link-list" data-email-links></ul>
+        </div>
         <div class="form-row">
           <label class="form-field">
             <span class="field-label">Date</span>
@@ -549,17 +560,6 @@
           <span class="field-label">Email address</span>
           <input type="email" name="emailAddress" class="field-input" placeholder="team@company.com" />
         </label>
-        <label class="form-field">
-          <span class="field-label">Notes</span>
-          <textarea name="notes" rows="3" class="field-input" placeholder="Key decisions, follow-ups, attachments"></textarea>
-        </label>
-        <div class="field-group">
-          <div class="flex items-center justify-between">
-            <span class="field-label">Links</span>
-            <button type="button" class="ghost-button small" data-action="email-add-link">Add link</button>
-          </div>
-          <ul class="link-list" data-email-links></ul>
-        </div>
         <p class="form-error" data-email-error></p>
       </div>
       <footer class="modal-footer">
