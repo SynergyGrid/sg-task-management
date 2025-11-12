@@ -628,16 +628,20 @@
             <select name="department" class="field-input"></select>
           </label>
           <label class="form-field">
-            <span class="field-label">Meeting type</span>
-            <select name="meetingType" class="field-input">
-              <option value="">Select type</option>
-              <option>Google Meet</option>
-              <option>Teams</option>
-              <option>Zoom</option>
-              <option>In Person</option>
-            </select>
+            <span class="field-label">Member</span>
+            <select name="assignee" class="field-input"></select>
           </label>
         </div>
+        <label class="form-field">
+          <span class="field-label">Meeting type</span>
+          <select name="meetingType" class="field-input">
+            <option value="">Select type</option>
+            <option>Google Meet</option>
+            <option>Teams</option>
+            <option>Zoom</option>
+            <option>In Person</option>
+          </select>
+        </label>
         <p class="form-error" data-meeting-error></p>
       </div>
       <footer class="modal-footer">
@@ -720,15 +724,19 @@
             <select name="department" class="field-input"></select>
           </label>
           <label class="form-field">
-            <span class="field-label">Status</span>
-            <select name="status" class="field-input">
-              <option value="Pending">Pending</option>
-              <option value="Completed">Completed</option>
-              <option value="In Progress">In Progress</option>
-              <option value="Updates">Updates</option>
-            </select>
+            <span class="field-label">Member</span>
+            <select name="assignee" class="field-input"></select>
           </label>
         </div>
+        <label class="form-field">
+          <span class="field-label">Status</span>
+          <select name="status" class="field-input">
+            <option value="Pending">Pending</option>
+            <option value="Completed">Completed</option>
+            <option value="In Progress">In Progress</option>
+            <option value="Updates">Updates</option>
+          </select>
+        </label>
         <label class="form-field">
           <span class="field-label">Email address</span>
           <input type="email" name="emailAddress" class="field-input" placeholder="team@company.com" />

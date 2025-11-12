@@ -318,6 +318,7 @@ const elements = {
   meetingDialogToggle: document.querySelector('[data-action="meeting-toggle-completion"]'),
   meetingDepartment: document.querySelector('#meetingForm select[name="department"]'),
   meetingPriority: document.querySelector('#meetingForm select[name="priority"]'),
+  meetingAssignee: document.querySelector('#meetingForm select[name="assignee"]'),
   meetingLinksList: document.querySelector("[data-meeting-links]"),
   meetingError: document.querySelector("[data-meeting-error]"),
   meetingActionList: document.querySelector("[data-meeting-action-list]"),
@@ -330,6 +331,7 @@ const elements = {
   emailDepartment: document.querySelector('#emailForm select[name="department"]'),
   emailPriority: document.querySelector('#emailForm select[name="priority"]'),
   emailStatus: document.querySelector('#emailForm select[name="status"]'),
+  emailAssignee: document.querySelector('#emailForm select[name="assignee"]'),
   emailLinksList: document.querySelector("[data-email-links]"),
   emailThreadList: document.querySelector("[data-email-thread-list]"),
   emailThreadInput: document.querySelector("[data-email-thread-input]"),
@@ -1651,6 +1653,24 @@ const updateTeamSelects = () => {
       elements.dialogForm.elements.assignee,
       elements.dialogForm.elements.assignee?.value,
       elements.dialogForm.elements.department?.value ?? ""
+    );
+  }
+
+  if (elements.meetingDepartment && elements.meetingAssignee) {
+    populateDepartmentOptions(elements.meetingDepartment, elements.meetingDepartment.value);
+    populateMemberOptions(
+      elements.meetingAssignee,
+      elements.meetingAssignee.value,
+      elements.meetingDepartment.value || ""
+    );
+  }
+
+  if (elements.emailDepartment && elements.emailAssignee) {
+    populateDepartmentOptions(elements.emailDepartment, elements.emailDepartment.value);
+    populateMemberOptions(
+      elements.emailAssignee,
+      elements.emailAssignee.value,
+      elements.emailDepartment.value || ""
     );
   }
 
@@ -4016,6 +4036,13 @@ const prepareMeetingDialog = (projectId, task = null) => {
   if (elements.meetingDepartment) {
     populateDepartmentOptions(elements.meetingDepartment, task?.departmentId || "");
   }
+  if (elements.meetingAssignee) {
+    populateMemberOptions(
+      elements.meetingAssignee,
+      task?.assigneeId ?? "",
+      elements.meetingDepartment?.value ?? ""
+    );
+  }
   if (elements.meetingPriority) {
     elements.meetingPriority.value = task?.priority ?? "medium";
   }
@@ -4138,6 +4165,7 @@ const commitMeetingForm = ({ allowCreate = false } = {}) => {
     projectId,
     sectionId,
     departmentId: form.elements.department.value || "",
+    assigneeId: form.elements.assignee?.value || "",
     kind: "meeting",
     source: existing?.source ?? "manual",
     metadata,
@@ -4245,6 +4273,13 @@ const prepareEmailDialog = (projectId, task = null) => {
   form.elements.projectId.value = projectId || "inbox";
   if (elements.emailDepartment) {
     populateDepartmentOptions(elements.emailDepartment, task?.departmentId || "");
+  }
+  if (elements.emailAssignee) {
+    populateMemberOptions(
+      elements.emailAssignee,
+      task?.assigneeId ?? "",
+      elements.emailDepartment?.value ?? ""
+    );
   }
   if (elements.emailPriority) {
     elements.emailPriority.value = task?.priority ?? "medium";
@@ -4366,6 +4401,7 @@ const commitEmailForm = ({ allowCreate = false } = {}) => {
     projectId,
     sectionId,
     departmentId: form.elements.department.value || "",
+    assigneeId: form.elements.assignee?.value || "",
     kind: "email",
     source: existing?.source ?? "manual",
     metadata,
@@ -4903,6 +4939,16 @@ const handleQuickAddProjectChange = () => {
 const handleQuickAddDepartmentChange = () => {
   const departmentId = elements.quickAddDepartment.value;
   populateMemberOptions(elements.quickAddAssignee, "", departmentId);
+};
+
+const handleMeetingDepartmentChange = () => {
+  const departmentId = elements.meetingDepartment ? elements.meetingDepartment.value : "";
+  populateMemberOptions(elements.meetingAssignee, "", departmentId);
+};
+
+const handleEmailDepartmentChange = () => {
+  const departmentId = elements.emailDepartment ? elements.emailDepartment.value : "";
+  populateMemberOptions(elements.emailAssignee, "", departmentId);
 };
 
 const handleAddSection = () => {
@@ -6425,6 +6471,7 @@ const registerEventListeners = () => {
   elements.projectDropdownMenu?.addEventListener("click", handleProjectMenuClick);
   elements.companyForm?.addEventListener("submit", handleCompanyFormSubmit);
   elements.companyForm?.addEventListener("click", handleCompanyFormClick);
+  elements.meetingDepartment?.addEventListener("change", handleMeetingDepartmentChange);
   elements.filterMember?.addEventListener("change", handleFilterChange);
   elements.filterDepartment?.addEventListener("change", handleFilterChange);
   elements.filterPriority?.addEventListener("change", handleFilterChange);
@@ -6451,6 +6498,7 @@ const registerEventListeners = () => {
   });
   elements.emailForm?.addEventListener("submit", handleEmailFormSubmit);
   elements.emailForm?.addEventListener("click", handleEmailFormClick);
+  elements.emailDepartment?.addEventListener("change", handleEmailDepartmentChange);
   elements.emailThreadList?.addEventListener("change", handleEmailThreadListChange);
   elements.emailThreadList?.addEventListener("input", handleEmailThreadListInput);
   elements.emailThreadList?.addEventListener("pointerup", handleEmailThreadListPointerUp);
