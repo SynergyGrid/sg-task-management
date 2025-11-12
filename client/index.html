@@ -641,6 +641,16 @@
           <span class="field-label">Description</span>
           <textarea name="notes" rows="3" class="field-input" placeholder="Summary, next steps, context" data-autosize-key="email-notes" data-autosize-default="72" data-rich-text="true"></textarea>
         </label>
+        <label class="form-field">
+          <span class="field-label">Thread messages</span>
+          <div class="field-group" data-email-thread>
+            <div class="thread-message-list" data-email-thread-list></div>
+            <div class="flex items-center gap-2">
+              <input type="text" class="field-input flex-1" placeholder="Add thread message and press Enter" data-email-thread-input />
+              <button type="button" class="ghost-button small" data-action="email-add-thread">Add</button>
+            </div>
+          </div>
+        </label>
         <div class="field-group">
           <div class="flex items-center justify-between">
             <span class="field-label">Links</span>

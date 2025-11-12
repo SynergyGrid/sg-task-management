@@ -204,6 +204,7 @@ const state = {
   editingMeetingId: null,
   editingEmailId: null,
   meetingActionDraft: [],
+  emailThreadDraft: [],
   meetingCompletedDraft: false,
   emailCompletedDraft: false,
   textareaHeights: {},
@@ -315,6 +316,8 @@ const elements = {
   emailPriority: document.querySelector('#emailForm select[name="priority"]'),
   emailStatus: document.querySelector('#emailForm select[name="status"]'),
   emailLinksList: document.querySelector("[data-email-links]"),
+  emailThreadList: document.querySelector("[data-email-thread-list]"),
+  emailThreadInput: document.querySelector("[data-email-thread-input]"),
   emailError: document.querySelector("[data-email-error]"),
   companyDialog: document.getElementById("companyDialog"),
   companyForm: document.getElementById("companyForm"),
@@ -2790,6 +2793,180 @@ const renderMeetingActionItems = () => {
   });
 };
 
+const normaliseThreadMessage = (entry) => {
+  if (!entry) return null;
+  const source =
+    typeof entry === "string"
+      ? entry
+      : typeof entry?.body === "string"
+        ? entry.body
+        : typeof entry?.content === "string"
+          ? entry.content
+          : typeof entry?.text === "string"
+            ? entry.text
+            : "";
+  const body = typeof source === "string" ? source.trim() : "";
+  if (!body) return null;
+  const completed = Boolean(entry?.completed);
+  const id = entry?.id || generateId("thread-message");
+  return { id, body, completed };
+};
+
+const commitEmailThreadDraft = () => {
+  const committed = (state.emailThreadDraft || [])
+    .map((entry) => normaliseThreadMessage(entry))
+    .filter(Boolean);
+  state.emailThreadDraft = committed;
+  return committed;
+};
+
+const setEmailThreadDraft = (entries = []) => {
+  const normalised = (Array.isArray(entries) ? entries : [])
+    .map((entry) => normaliseThreadMessage(entry))
+    .filter(Boolean);
+  state.emailThreadDraft = normalised;
+};
+
+const autosizeThreadTextarea = (textarea) => {
+  if (!textarea) return;
+  textarea.style.height = "auto";
+  const minHeight = 40;
+  const maxHeight = 640;
+  const nextHeight = Math.max(minHeight, Math.min(maxHeight, textarea.scrollHeight));
+  textarea.style.height = `${nextHeight}px`;
+};
+
+const renderEmailThreadMessages = () => {
+  const list = elements.emailThreadList;
+  if (!list) return;
+  list.replaceChildren();
+  const messages = state.emailThreadDraft || [];
+  if (!messages.length) {
+    const empty = document.createElement("p");
+    empty.className = "action-items-empty";
+    empty.textContent = "No thread messages captured yet.";
+    list.append(empty);
+    return;
+  }
+  messages.forEach((message) => {
+    const row = document.createElement("div");
+    row.className = "thread-message-row";
+    row.dataset.threadMessageId = message.id;
+    if (message.completed) {
+      row.classList.add("completed");
+    }
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "thread-message-checkbox";
+    checkbox.dataset.threadMessageId = message.id;
+    checkbox.checked = message.completed;
+
+    const textarea = document.createElement("textarea");
+    textarea.rows = 2;
+    textarea.className = "thread-message-input";
+    textarea.dataset.threadMessageId = message.id;
+    textarea.value = message.body;
+    textarea.placeholder = "Email message details";
+    autosizeThreadTextarea(textarea);
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "ghost-button small";
+    removeButton.dataset.action = "email-remove-thread";
+    removeButton.dataset.threadMessageId = message.id;
+    removeButton.textContent = "Remove";
+
+    row.append(checkbox, textarea, removeButton);
+    list.append(row);
+  });
+};
+
+const addEmailThreadMessages = (entries = []) => {
+  const additions = (Array.isArray(entries) ? entries : [entries])
+    .map((entry) => {
+      if (typeof entry === "string") {
+        const value = entry.trim();
+        if (!value) return null;
+        return { id: generateId("thread-message"), body: value, completed: false };
+      }
+      const body = typeof entry?.body === "string" ? entry.body.trim() : "";
+      if (!body) return null;
+      return { id: generateId("thread-message"), body, completed: Boolean(entry.completed) };
+    })
+    .filter(Boolean);
+  if (!additions.length) return;
+  state.emailThreadDraft = [...(state.emailThreadDraft || []), ...additions];
+  renderEmailThreadMessages();
+};
+
+const updateEmailThreadMessage = (id, updates = {}) => {
+  if (!id) return;
+  state.emailThreadDraft = (state.emailThreadDraft || []).map((message) => {
+    if (message.id !== id) return message;
+    const updated = normaliseThreadMessage({ ...message, ...updates });
+    return updated ?? message;
+  });
+};
+
+const removeEmailThreadMessage = (id) => {
+  if (!id) return;
+  state.emailThreadDraft = (state.emailThreadDraft || []).filter((message) => message.id !== id);
+  renderEmailThreadMessages();
+};
+
+const toggleEmailThreadMessage = (id, completed) => {
+  updateEmailThreadMessage(id, { completed });
+  renderEmailThreadMessages();
+};
+
+const addEmailThreadFromInput = () => {
+  const input = elements.emailThreadInput;
+  if (!input) return;
+  const value = input.value.trim();
+  if (!value) return;
+  addEmailThreadMessages([value]);
+  input.value = "";
+};
+
+const handleEmailThreadListChange = (event) => {
+  const checkbox = event.target.closest(".thread-message-checkbox");
+  if (!checkbox) return;
+  const id = checkbox.dataset.threadMessageId;
+  toggleEmailThreadMessage(id, checkbox.checked);
+};
+
+const handleEmailThreadListInput = (event) => {
+  const textarea = event.target.closest(".thread-message-input");
+  if (!textarea) return;
+  const id = textarea.dataset.threadMessageId;
+  updateEmailThreadMessage(id, { body: textarea.value });
+  autosizeThreadTextarea(textarea);
+};
+
+const handleEmailThreadInputKeydown = (event) => {
+  if (event.key !== "Enter" || event.shiftKey) return;
+  const input = event.target.closest("[data-email-thread-input]");
+  if (!input) return;
+  event.preventDefault();
+  addEmailThreadFromInput();
+};
+
+const handleEmailThreadInputPaste = (event) => {
+  const input = event.target.closest("[data-email-thread-input]");
+  if (!input) return;
+  const text = event.clipboardData?.getData("text");
+  if (!text) return;
+  event.preventDefault();
+  const entries = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!entries.length) return;
+  addEmailThreadMessages(entries);
+  input.value = "";
+};
+
 const handleMeetingActionListChange = (event) => {
   const checkbox = event.target.closest(".action-item-checkbox");
   if (!checkbox) return;
@@ -3882,6 +4059,14 @@ const prepareEmailDialog = (projectId, task = null) => {
     form.elements.notes.value = task?.description ?? "";
   }
   resetLinkList(elements.emailLinksList, Array.isArray(task?.links) ? task.links : []);
+  const threadMessages = Array.isArray(task?.metadata?.threadMessages)
+    ? task.metadata.threadMessages
+    : [];
+  setEmailThreadDraft(threadMessages);
+  renderEmailThreadMessages();
+  if (elements.emailThreadInput) {
+    elements.emailThreadInput.value = "";
+  }
   state.emailCompletedDraft = Boolean(task?.completed);
   const completedAt = task?.completedAt ?? null;
   const isEditing = Boolean(task);
@@ -3918,6 +4103,11 @@ const closeEmailDialog = () => {
   if (form) {
     form.reset();
     resetLinkList(elements.emailLinksList);
+    setEmailThreadDraft([]);
+    renderEmailThreadMessages();
+    if (elements.emailThreadInput) {
+      elements.emailThreadInput.value = "";
+    }
     if (elements.emailError) elements.emailError.textContent = "";
     applySavedTextareaHeight(form.elements.notes);
   }
@@ -3965,6 +4155,8 @@ const commitEmailForm = ({ allowCreate = false } = {}) => {
   metadata.emailAddress = form.elements.emailAddress.value.trim();
   metadata.status = form.elements.status.value;
   metadata.links = links;
+  const threadMessages = commitEmailThreadDraft();
+  metadata.threadMessages = threadMessages;
 
   const payload = {
     title,
@@ -4032,6 +4224,11 @@ const handleEmailFormClick = (event) => {
     createLinkRow(elements.emailLinksList);
     return;
   }
+  if (action === "email-add-thread") {
+    event.preventDefault();
+    addEmailThreadFromInput();
+    return;
+  }
   if (action === "remove-link") {
     event.preventDefault();
     const row = event.target.closest('[data-link-row]');
@@ -4039,6 +4236,12 @@ const handleEmailFormClick = (event) => {
     if (elements.emailLinksList && elements.emailLinksList.childElementCount === 0) {
       createLinkRow(elements.emailLinksList);
     }
+    return;
+  }
+  if (action === "email-remove-thread") {
+    event.preventDefault();
+    const threadId = event.target.dataset.threadMessageId;
+    removeEmailThreadMessage(threadId);
     return;
   }
   if (action === "close-email") {
@@ -6044,6 +6247,10 @@ const registerEventListeners = () => {
   });
   elements.emailForm?.addEventListener("submit", handleEmailFormSubmit);
   elements.emailForm?.addEventListener("click", handleEmailFormClick);
+  elements.emailThreadList?.addEventListener("change", handleEmailThreadListChange);
+  elements.emailThreadList?.addEventListener("input", handleEmailThreadListInput);
+  elements.emailThreadInput?.addEventListener("keydown", handleEmailThreadInputKeydown);
+  elements.emailThreadInput?.addEventListener("paste", handleEmailThreadInputPaste);
   elements.emailDialog?.addEventListener("cancel", (event) => {
     event.preventDefault();
     autoSaveEmailDialog();
@@ -6143,6 +6350,7 @@ const init = async () => {
   await hydrateState();
   initialiseTextareaAutosize();
   renderMeetingActionItems();
+  renderEmailThreadMessages();
   render();
 };
 
