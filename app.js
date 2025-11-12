@@ -86,6 +86,8 @@ const PRIORITY_LABELS = {
 };
 const MIN_TEXTAREA_HEIGHT = 72;
 const MAX_TEXTAREA_HEIGHT = 720;
+const THREAD_MESSAGE_MIN_HEIGHT = 40;
+const THREAD_MESSAGE_MAX_HEIGHT = 640;
 const AUTOSIZE_RESET_KEYS = new Set([
   "quick-add-description",
   "dialog-description",
@@ -955,6 +957,13 @@ const ensureTaskDefaults = (task) => {
     .filter(Boolean);
   task.metadata.actionItems = actionItems;
   task.actionItems = actionItems;
+  const rawThreadMessages = Array.isArray(task.metadata.threadMessages)
+    ? task.metadata.threadMessages
+    : [];
+  const threadMessages = rawThreadMessages
+    .map((entry) => normaliseThreadMessage(entry))
+    .filter(Boolean);
+  task.metadata.threadMessages = threadMessages;
 };
 const describeDueDate = (dueDate) => {
   if (!dueDate) return { label: "", className: "" };
@@ -2809,7 +2818,14 @@ const normaliseThreadMessage = (entry) => {
   if (!body) return null;
   const completed = Boolean(entry?.completed);
   const id = entry?.id || generateId("thread-message");
-  return { id, body, completed };
+  const heightSource =
+    typeof entry?.height === "number"
+      ? entry.height
+      : typeof entry?.height === "string"
+        ? Number.parseFloat(entry.height)
+        : NaN;
+  const height = clampThreadHeight(heightSource);
+  return { id, body, completed, height: height ?? null };
 };
 
 const commitEmailThreadDraft = () => {
@@ -2827,13 +2843,24 @@ const setEmailThreadDraft = (entries = []) => {
   state.emailThreadDraft = normalised;
 };
 
-const autosizeThreadTextarea = (textarea) => {
-  if (!textarea) return;
-  textarea.style.height = "auto";
-  const minHeight = 40;
-  const maxHeight = 640;
-  const nextHeight = Math.max(minHeight, Math.min(maxHeight, textarea.scrollHeight));
+const clampThreadHeight = (value) => {
+  const numeric =
+    typeof value === "number" ? value : Number.parseFloat(typeof value === "string" ? value : NaN);
+  if (!Number.isFinite(numeric)) return null;
+  return Math.min(THREAD_MESSAGE_MAX_HEIGHT, Math.max(THREAD_MESSAGE_MIN_HEIGHT, numeric));
+};
+
+const autosizeThreadTextarea = (textarea, preferredHeight = null) => {
+  if (!textarea) return THREAD_MESSAGE_MIN_HEIGHT;
+  let nextHeight;
+  if (Number.isFinite(preferredHeight)) {
+    nextHeight = clampThreadHeight(preferredHeight) ?? THREAD_MESSAGE_MIN_HEIGHT;
+  } else {
+    textarea.style.height = "auto";
+    nextHeight = clampThreadHeight(textarea.scrollHeight) ?? THREAD_MESSAGE_MIN_HEIGHT;
+  }
   textarea.style.height = `${nextHeight}px`;
+  return nextHeight;
 };
 
 const renderEmailThreadMessages = () => {
@@ -2868,7 +2895,8 @@ const renderEmailThreadMessages = () => {
     textarea.dataset.threadMessageId = message.id;
     textarea.value = message.body;
     textarea.placeholder = "Email message details";
-    autosizeThreadTextarea(textarea);
+    const savedHeight = clampThreadHeight(message.height);
+    autosizeThreadTextarea(textarea, savedHeight);
 
     const removeButton = document.createElement("button");
     removeButton.type = "button";
@@ -2888,11 +2916,23 @@ const addEmailThreadMessages = (entries = []) => {
       if (typeof entry === "string") {
         const value = entry.trim();
         if (!value) return null;
-        return { id: generateId("thread-message"), body: value, completed: false };
+        return { id: generateId("thread-message"), body: value, completed: false, height: null };
       }
       const body = typeof entry?.body === "string" ? entry.body.trim() : "";
       if (!body) return null;
-      return { id: generateId("thread-message"), body, completed: Boolean(entry.completed) };
+      const height = clampThreadHeight(
+        typeof entry.height === "number"
+          ? entry.height
+          : typeof entry.height === "string"
+            ? Number.parseFloat(entry.height)
+            : NaN,
+      );
+      return {
+        id: generateId("thread-message"),
+        body,
+        completed: Boolean(entry.completed),
+        height: height ?? null,
+      };
     })
     .filter(Boolean);
   if (!additions.length) return;
@@ -2940,8 +2980,8 @@ const handleEmailThreadListInput = (event) => {
   const textarea = event.target.closest(".thread-message-input");
   if (!textarea) return;
   const id = textarea.dataset.threadMessageId;
-  updateEmailThreadMessage(id, { body: textarea.value });
-  autosizeThreadTextarea(textarea);
+  const nextHeight = autosizeThreadTextarea(textarea);
+  updateEmailThreadMessage(id, { body: textarea.value, height: nextHeight });
 };
 
 const handleEmailThreadInputKeydown = (event) => {
@@ -2952,19 +2992,15 @@ const handleEmailThreadInputKeydown = (event) => {
   addEmailThreadFromInput();
 };
 
-const handleEmailThreadInputPaste = (event) => {
-  const input = event.target.closest("[data-email-thread-input]");
-  if (!input) return;
-  const text = event.clipboardData?.getData("text");
-  if (!text) return;
-  event.preventDefault();
-  const entries = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (!entries.length) return;
-  addEmailThreadMessages(entries);
-  input.value = "";
+const handleEmailThreadListPointerUp = (event) => {
+  const textarea = event.target.closest(".thread-message-input");
+  if (!textarea) return;
+  const id = textarea.dataset.threadMessageId;
+  const computed = clampThreadHeight(
+    Number.parseFloat(window.getComputedStyle(textarea).height || ""),
+  );
+  if (!id || computed === null) return;
+  updateEmailThreadMessage(id, { height: computed });
 };
 
 const handleMeetingActionListChange = (event) => {
@@ -2997,21 +3033,6 @@ const handleMeetingActionInputKeydown = (event) => {
       .map((line) => line.trim())
       .filter(Boolean)
   );
-  input.value = "";
-};
-
-const handleMeetingActionInputPaste = (event) => {
-  const input = event.target.closest("[data-meeting-action-input]");
-  if (!input) return;
-  const text = event.clipboardData?.getData("text");
-  if (!text) return;
-  event.preventDefault();
-  const items = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (!items.length) return;
-  addMeetingActionItems(items);
   input.value = "";
 };
 
@@ -6240,7 +6261,6 @@ const registerEventListeners = () => {
   elements.meetingActionList?.addEventListener("change", handleMeetingActionListChange);
   elements.meetingActionList?.addEventListener("input", handleMeetingActionListInput);
   elements.meetingActionInput?.addEventListener("keydown", handleMeetingActionInputKeydown);
-  elements.meetingActionInput?.addEventListener("paste", handleMeetingActionInputPaste);
   elements.meetingDialog?.addEventListener("cancel", (event) => {
     event.preventDefault();
     autoSaveMeetingDialog();
@@ -6249,8 +6269,8 @@ const registerEventListeners = () => {
   elements.emailForm?.addEventListener("click", handleEmailFormClick);
   elements.emailThreadList?.addEventListener("change", handleEmailThreadListChange);
   elements.emailThreadList?.addEventListener("input", handleEmailThreadListInput);
+  elements.emailThreadList?.addEventListener("pointerup", handleEmailThreadListPointerUp);
   elements.emailThreadInput?.addEventListener("keydown", handleEmailThreadInputKeydown);
-  elements.emailThreadInput?.addEventListener("paste", handleEmailThreadInputPaste);
   elements.emailDialog?.addEventListener("cancel", (event) => {
     event.preventDefault();
     autoSaveEmailDialog();
