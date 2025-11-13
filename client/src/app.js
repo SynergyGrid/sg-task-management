@@ -1609,18 +1609,28 @@ const describeTaskActionSection = (task) => {
     return {
       label: "Thread message",
       text: snippet || "No thread messages yet.",
+      items: [],
     };
   }
 
   const items = getActionItems(task);
   if (task.kind === "meeting") {
-    const highlight =
-      collapseWhitespace(items.find((item) => !item?.completed)?.title) ||
-      collapseWhitespace(items[0]?.title);
-    const snippet = truncateText(highlight || "", 200);
+    const previewItems = items
+      .map((item) => collapseWhitespace(item?.title))
+      .filter(Boolean)
+      .slice(0, 4)
+      .map((title) => truncateText(title, 160));
+    if (previewItems.length) {
+      return {
+        label: "Action items",
+        text: "",
+        items: previewItems,
+      };
+    }
     return {
-      label: highlight ? "Action item" : "Action items",
-      text: snippet || "No action items yet.",
+      label: "Action items",
+      text: "No action items yet.",
+      items: [],
     };
   }
 
@@ -1628,10 +1638,10 @@ const describeTaskActionSection = (task) => {
     const remaining = items.filter((item) => !item?.completed).length;
     const summary =
       remaining === 0 ? `All ${items.length} complete` : `${remaining} of ${items.length} open`;
-    return { label: "Action items", text: summary };
+    return { label: "Action items", text: summary, items: [] };
   }
 
-  return { label: "Action items", text: "None captured yet." };
+  return { label: "Action items", text: "None captured yet.", items: [] };
 };
 
 const describeTaskDueLabel = (task) => {
@@ -2526,6 +2536,7 @@ const renderTaskItem = (task) => {
   const contextEl = fragment.querySelector(".task-context");
   const actionLabelEl = fragment.querySelector(".task-action-label");
   const actionTextEl = fragment.querySelector(".task-action-text");
+  const actionListEl = fragment.querySelector(".task-action-list");
   const priorityEl = fragment.querySelector(".task-footer-priority");
   const dueEl = fragment.querySelector(".task-footer-due");
   const memberEl = fragment.querySelector(".task-footer-member");
@@ -2541,12 +2552,27 @@ const renderTaskItem = (task) => {
     contextEl.textContent = context;
     contextEl.hidden = !context;
   }
-  const { label: actionLabel, text: actionText } = describeTaskActionSection(task);
+  const { label: actionLabel, text: actionText, items: actionItems } = describeTaskActionSection(task);
   if (actionLabelEl) {
-    actionLabelEl.textContent = `${actionLabel}:`;
+    actionLabelEl.textContent = actionLabel ? `${actionLabel}:` : "";
+    actionLabelEl.hidden = !actionLabel;
   }
   if (actionTextEl) {
-    actionTextEl.textContent = actionText;
+    actionTextEl.textContent = actionText || "";
+    actionTextEl.hidden = !actionText;
+  }
+  if (actionListEl) {
+    actionListEl.replaceChildren();
+    if (Array.isArray(actionItems) && actionItems.length) {
+      actionListEl.hidden = false;
+      actionItems.forEach((line) => {
+        const entry = document.createElement("li");
+        entry.textContent = line;
+        actionListEl.append(entry);
+      });
+    } else {
+      actionListEl.hidden = true;
+    }
   }
   if (priorityEl) {
     priorityEl.textContent = describeTaskPriority(task);
