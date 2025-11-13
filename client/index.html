@@ -560,10 +560,6 @@
         <input type="hidden" name="projectId" />
 
         <label class="form-field">
-          <span class="field-label">Sub-project</span>
-          <select name="subProjectId" class="field-input" required></select>
-        </label>
-        <label class="form-field">
           <span class="field-label">Title</span>
           <input type="text" name="title" required class="field-input" placeholder="Sprint planning sync" />
         </label>
@@ -646,6 +642,10 @@
             <option>In Person</option>
           </select>
         </label>
+        <label class="form-field">
+          <span class="field-label">Sub-project</span>
+          <select name="subProjectId" class="field-input" required></select>
+        </label>
         <p class="form-error" data-meeting-error></p>
       </div>
       <footer class="modal-footer">
@@ -673,13 +673,6 @@
         <p class="text-sm text-slate-500" data-email-project></p>
         <input type="hidden" name="projectId" />
 
-        <label class="form-field">
-
-          <span class="field-label">Sub-project</span>
-
-          <select name="subProjectId" class="field-input" required></select>
-
-        </label>
         <label class="form-field">
           <span class="field-label">Title</span>
           <input type="text" name="title" required class="field-input" placeholder="Client follow-up" />
@@ -744,6 +737,10 @@
         <label class="form-field">
           <span class="field-label">Email address</span>
           <input type="email" name="emailAddress" class="field-input" placeholder="team@company.com" />
+        </label>
+        <label class="form-field">
+          <span class="field-label">Sub-project</span>
+          <select name="subProjectId" class="field-input" required></select>
         </label>
         <p class="form-error" data-email-error></p>
       </div>
