@@ -1536,14 +1536,32 @@ const getTaskDescriptionText = (task) => {
   return "";
 };
 
-const buildPreviewFromText = (text, lines = 3) => {
+const truncateText = (value, maxLength = 220) => {
+  if (!value) return "";
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+};
+
+const collapseWhitespace = (value) =>
+  typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+
+const splitSentences = (text) => {
+  if (!text) return [];
+  const normalised = collapseWhitespace(text);
+  if (!normalised) return [];
+  const matches = normalised.match(/[^.!?]+[.!?]?/g);
+  if (matches) {
+    return matches.map((segment) => segment.trim()).filter(Boolean);
+  }
+  return [normalised];
+};
+
+const buildPreviewFromText = (text) => {
   if (!text) return "";
-  const segments = text
-    .split(/\r?\n/)
-    .map((segment) => segment.trim())
-    .filter(Boolean);
-  if (!segments.length) return "";
-  return segments.slice(0, lines).join("\n");
+  const sentences = splitSentences(text);
+  if (!sentences.length) return "";
+  const snippet = sentences.slice(0, 2).join(" ");
+  return truncateText(snippet, 220);
 };
 
 const describeTaskPreview = (task) => {
@@ -1553,17 +1571,67 @@ const describeTaskPreview = (task) => {
 
 const describeTaskAssignee = (task) => {
   const member = getMemberById(task.assigneeId);
-  return member ? `Assignee: ${member.name}` : "Assignee: Unassigned";
+  return member ? `Member: ${member.name}` : "Member: Unassigned";
 };
 
-const describeTaskActionItems = (task) => {
-  const items = Array.isArray(task.metadata?.actionItems) ? task.metadata.actionItems : [];
-  if (!items.length) return "Action items: none";
-  const remaining = items.filter((item) => !item?.completed).length;
-  if (remaining === 0) {
-    return `Action items: ${items.length} complete`;
+const describeTaskContext = (task) => {
+  const subProject = task.subProjectId ? getSubProjectById(task.subProjectId) : null;
+  if (subProject) {
+    return `Sub-project: ${subProject.name}`;
   }
-  return `Action items: ${remaining}/${items.length} open`;
+  if (shouldShowProjectChip(task)) {
+    const project = getProjectById(task.projectId);
+    if (project) {
+      return `Project: ${project.name}`;
+    }
+  }
+  return "";
+};
+
+const describeTaskPriority = (task) => {
+  const key = typeof task.priority === "string" ? task.priority.toLowerCase() : "medium";
+  const baseLabel = PRIORITY_LABELS[key] ?? PRIORITY_LABELS.medium;
+  const cleanLabel = baseLabel?.replace(/ priority$/i, "") || "Medium";
+  return `Priority: ${cleanLabel}`;
+};
+
+const getActionItems = (task) =>
+  Array.isArray(task.metadata?.actionItems) ? task.metadata.actionItems : [];
+
+const getThreadMessages = (task) =>
+  Array.isArray(task.metadata?.threadMessages) ? task.metadata.threadMessages : [];
+
+const describeTaskActionSection = (task) => {
+  if (task.kind === "email") {
+    const messages = getThreadMessages(task);
+    const latestMessage = messages.length ? collapseWhitespace(messages[messages.length - 1]?.body) : "";
+    const snippet = truncateText(latestMessage || "", 200);
+    return {
+      label: "Thread message",
+      text: snippet || "No thread messages yet.",
+    };
+  }
+
+  const items = getActionItems(task);
+  if (task.kind === "meeting") {
+    const highlight =
+      collapseWhitespace(items.find((item) => !item?.completed)?.title) ||
+      collapseWhitespace(items[0]?.title);
+    const snippet = truncateText(highlight || "", 200);
+    return {
+      label: highlight ? "Action item" : "Action items",
+      text: snippet || "No action items yet.",
+    };
+  }
+
+  if (items.length) {
+    const remaining = items.filter((item) => !item?.completed).length;
+    const summary =
+      remaining === 0 ? `All ${items.length} complete` : `${remaining} of ${items.length} open`;
+    return { label: "Action items", text: summary };
+  }
+
+  return { label: "Action items", text: "None captured yet." };
 };
 
 const describeTaskDueLabel = (task) => {
@@ -2455,10 +2523,12 @@ const renderTaskItem = (task) => {
   const item = fragment.querySelector(".task-item");
   const titleEl = fragment.querySelector(".task-title");
   const previewEl = fragment.querySelector(".task-preview");
-  const assigneeEl = fragment.querySelector(".task-meta-assignee");
-  const actionEl = fragment.querySelector(".task-meta-actions");
-  const dueEl = fragment.querySelector(".task-meta-due");
-  const projectMetaEl = fragment.querySelector(".task-meta-project");
+  const contextEl = fragment.querySelector(".task-context");
+  const actionLabelEl = fragment.querySelector(".task-action-label");
+  const actionTextEl = fragment.querySelector(".task-action-text");
+  const priorityEl = fragment.querySelector(".task-footer-priority");
+  const dueEl = fragment.querySelector(".task-footer-due");
+  const memberEl = fragment.querySelector(".task-footer-member");
   const editBtn = fragment.querySelector('[data-action="edit"]');
 
   item.dataset.taskId = task.id;
@@ -2466,19 +2536,26 @@ const renderTaskItem = (task) => {
   titleEl.textContent = task.title;
   titleEl.title = task.title;
   previewEl.textContent = describeTaskPreview(task);
-  assigneeEl.textContent = describeTaskAssignee(task);
-  actionEl.textContent = describeTaskActionItems(task);
-  dueEl.textContent = describeTaskDueLabel(task);
-  if (projectMetaEl) {
-    const subProject = task.subProjectId ? getSubProjectById(task.subProjectId) : null;
-    if (subProject) {
-      projectMetaEl.textContent = `Sub-project: ${subProject.name}`;
-    } else if (shouldShowProjectChip(task)) {
-      const project = getProjectById(task.projectId);
-      projectMetaEl.textContent = project ? `Project: ${project.name}` : "";
-    } else {
-      projectMetaEl.textContent = "";
-    }
+  if (contextEl) {
+    const context = describeTaskContext(task);
+    contextEl.textContent = context;
+    contextEl.hidden = !context;
+  }
+  const { label: actionLabel, text: actionText } = describeTaskActionSection(task);
+  if (actionLabelEl) {
+    actionLabelEl.textContent = `${actionLabel}:`;
+  }
+  if (actionTextEl) {
+    actionTextEl.textContent = actionText;
+  }
+  if (priorityEl) {
+    priorityEl.textContent = describeTaskPriority(task);
+  }
+  if (dueEl) {
+    dueEl.textContent = describeTaskDueLabel(task);
+  }
+  if (memberEl) {
+    memberEl.textContent = describeTaskAssignee(task);
   }
 
   item.classList.toggle("completed", Boolean(task.completed));
