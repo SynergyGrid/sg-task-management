@@ -1616,10 +1616,13 @@ const describeTaskActionSection = (task) => {
   const items = getActionItems(task);
   if (task.kind === "meeting") {
     const previewItems = items
-      .map((item) => collapseWhitespace(item?.title))
-      .filter(Boolean)
+      .map((item) => ({
+        text: collapseWhitespace(item?.title),
+        completed: Boolean(item?.completed),
+      }))
+      .filter((entry) => Boolean(entry.text))
       .slice(0, 4)
-      .map((title) => truncateText(title, 160));
+      .map((entry) => ({ ...entry, text: truncateText(entry.text, 160) }));
     if (previewItems.length) {
       return {
         label: "Action items",
@@ -2565,9 +2568,20 @@ const renderTaskItem = (task) => {
     actionListEl.replaceChildren();
     if (Array.isArray(actionItems) && actionItems.length) {
       actionListEl.hidden = false;
-      actionItems.forEach((line) => {
+      actionItems.forEach((item) => {
         const entry = document.createElement("li");
-        entry.textContent = line;
+        entry.className = "task-action-entry";
+        entry.dataset.completed = item?.completed ? "true" : "false";
+
+        const checkbox = document.createElement("span");
+        checkbox.className = "task-action-checkbox";
+        checkbox.setAttribute("aria-hidden", "true");
+
+        const textLine = document.createElement("span");
+        textLine.className = "task-action-textline";
+        textLine.textContent = item?.text ?? "";
+
+        entry.append(checkbox, textLine);
         actionListEl.append(entry);
       });
     } else {
