@@ -723,8 +723,8 @@ const elements = {
   projectDropdownLabel: document.getElementById("projectDropdownLabel"),
   meetingDialog: document.getElementById("meetingDialog"),
   meetingForm: document.getElementById("meetingForm"),
+  meetingProjectSelect: document.querySelector('#meetingForm select[name="projectId"]'),
   meetingSubProjectSelect: document.querySelector('#meetingForm select[name="subProjectId"]'),
-  meetingProjectLabel: document.querySelector("[data-meeting-project]"),
   meetingDialogStatus: document.querySelector("[data-meeting-status]"),
   meetingDialogToggle: document.querySelector('[data-action="meeting-toggle-completion"]'),
   meetingDeleteButton: document.querySelector('[data-action="delete-meeting"]'),
@@ -737,8 +737,8 @@ const elements = {
   meetingActionInput: document.querySelector("[data-meeting-action-input]"),
   emailDialog: document.getElementById("emailDialog"),
   emailForm: document.getElementById("emailForm"),
+  emailProjectSelect: document.querySelector('#emailForm select[name="projectId"]'),
   emailSubProjectSelect: document.querySelector('#emailForm select[name="subProjectId"]'),
-  emailProjectLabel: document.querySelector("[data-email-project]"),
   emailDialogStatus: document.querySelector("[data-email-status]"),
   emailDialogToggle: document.querySelector('[data-action="email-toggle-completion"]'),
   emailDeleteButton: document.querySelector('[data-action="delete-email"]'),
@@ -2221,6 +2221,8 @@ const populateProjectOptions = () => {
   const selects = [
     elements.quickAddProject,
     elements.dialogForm?.elements.project,
+    elements.meetingProjectSelect,
+    elements.emailProjectSelect,
   ].filter(Boolean);
 
   const options = state.projects.map((project) => {
@@ -2278,6 +2280,50 @@ const populateSubProjectOptions = (
   }
   select.disabled = shouldRequireSelection && !subProjects.length;
 };
+
+const configureSubProjectSelect = ({
+  select,
+  projectId,
+  preferredSubProjectId = "",
+  includeEmpty = true,
+  submitButton,
+  errorElement,
+  errorMessage,
+}) => {
+  if (!select) return false;
+  const targetProjectId = projectId || "inbox";
+  const hasSubProjects = getSubProjectsForProject(targetProjectId).length > 0;
+  populateSubProjectOptions(select, targetProjectId, preferredSubProjectId, { includeEmpty });
+  if (submitButton) {
+    submitButton.disabled = !hasSubProjects;
+  }
+  if (errorElement && typeof errorMessage === "string") {
+    errorElement.textContent = hasSubProjects ? "" : errorMessage;
+  }
+  return hasSubProjects;
+};
+
+const refreshMeetingSubProjectControls = (projectId, preferredSubProjectId = "") =>
+  configureSubProjectSelect({
+    select: elements.meetingSubProjectSelect,
+    projectId,
+    preferredSubProjectId,
+    includeEmpty: false,
+    submitButton: elements.meetingForm?.querySelector('button[type="submit"]'),
+    errorElement: elements.meetingError,
+    errorMessage: "Add a sub-project before logging a meeting.",
+  });
+
+const refreshEmailSubProjectControls = (projectId, preferredSubProjectId = "") =>
+  configureSubProjectSelect({
+    select: elements.emailSubProjectSelect,
+    projectId,
+    preferredSubProjectId,
+    includeEmpty: false,
+    submitButton: elements.emailForm?.querySelector('button[type="submit"]'),
+    errorElement: elements.emailError,
+    errorMessage: "Add a sub-project before logging an email.",
+  });
 
 const populateProjectCompanyOptions = (select, selectedId) => {
   if (!select) return;
@@ -4981,23 +5027,9 @@ const prepareMeetingDialog = (projectId, task = null) => {
   const form = elements.meetingForm;
   if (!form) return;
   form.reset();
-  const project = getProjectById(projectId);
-  if (elements.meetingProjectLabel) {
-    elements.meetingProjectLabel.textContent = project ? project.name : "Inbox";
-  }
-  form.elements.projectId.value = projectId || "inbox";
-  const availableSubProjects = getSubProjectsForProject(projectId);
-  const hasSubProjects = availableSubProjects.length > 0;
-  populateSubProjectOptions(
-    elements.meetingSubProjectSelect,
-    projectId,
-    task?.subProjectId ?? "",
-    { includeEmpty: false },
-  );
-  const meetingSubmit = form.querySelector('button[type="submit"]');
-  if (meetingSubmit) {
-    meetingSubmit.disabled = !hasSubProjects;
-  }
+  const targetProjectId = projectId || "inbox";
+  form.elements.projectId.value = targetProjectId;
+  refreshMeetingSubProjectControls(targetProjectId, task?.subProjectId ?? "");
   if (elements.meetingDepartment) {
     populateDepartmentOptions(elements.meetingDepartment, task?.departmentId || "");
   }
@@ -5043,11 +5075,6 @@ const prepareMeetingDialog = (projectId, task = null) => {
     elements.meetingDialogStatus.textContent = "";
   }
 
-  if (elements.meetingError) {
-    elements.meetingError.textContent = hasSubProjects
-      ? ""
-      : "Add a sub-project before logging a meeting.";
-  }
   registerAutosizeTextarea(form.elements.attendees);
   const meetingNotesEditor = getRichTextElement(form.elements.notes);
   registerAutosizeTextarea(meetingNotesEditor);
@@ -5265,23 +5292,9 @@ const prepareEmailDialog = (projectId, task = null) => {
   const form = elements.emailForm;
   if (!form) return;
   form.reset();
-  const project = getProjectById(projectId);
-  if (elements.emailProjectLabel) {
-    elements.emailProjectLabel.textContent = project ? project.name : "Inbox";
-  }
-  form.elements.projectId.value = projectId || "inbox";
-  const availableSubProjects = getSubProjectsForProject(projectId);
-  const hasSubProjects = availableSubProjects.length > 0;
-  populateSubProjectOptions(
-    elements.emailSubProjectSelect,
-    projectId,
-    task?.subProjectId ?? "",
-    { includeEmpty: false },
-  );
-  const emailSubmit = form.querySelector('button[type="submit"]');
-  if (emailSubmit) {
-    emailSubmit.disabled = !hasSubProjects;
-  }
+  const targetProjectId = projectId || "inbox";
+  form.elements.projectId.value = targetProjectId;
+  refreshEmailSubProjectControls(targetProjectId, task?.subProjectId ?? "");
   if (elements.emailDepartment) {
     populateDepartmentOptions(elements.emailDepartment, task?.departmentId || "");
   }
@@ -5327,11 +5340,6 @@ const prepareEmailDialog = (projectId, task = null) => {
   updateEmailDialogCompletionState(state.emailCompletedDraft, completedAt);
   if (!isEditing && elements.emailDialogStatus) {
     elements.emailDialogStatus.textContent = "";
-  }
-  if (elements.emailError) {
-    elements.emailError.textContent = hasSubProjects
-      ? ""
-      : "Add a sub-project before logging an email.";
   }
   const emailNotesEditor = getRichTextElement(form.elements.notes);
   registerAutosizeTextarea(emailNotesEditor);
@@ -6007,6 +6015,11 @@ const handleDialogDepartmentChange = () => {
   populateMemberOptions(elements.dialogForm.elements.assignee, "", departmentId);
 };
 
+const handleMeetingProjectChange = () => {
+  const projectId = elements.meetingProjectSelect?.value || "inbox";
+  refreshMeetingSubProjectControls(projectId);
+};
+
 const handleQuickAddProjectChange = () => {
   const projectId = elements.quickAddProject.value;
   populateSectionOptions(elements.quickAddSection, projectId);
@@ -6021,6 +6034,11 @@ const handleQuickAddDepartmentChange = () => {
 const handleMeetingDepartmentChange = () => {
   const departmentId = elements.meetingDepartment ? elements.meetingDepartment.value : "";
   populateMemberOptions(elements.meetingAssignee, "", departmentId);
+};
+
+const handleEmailProjectChange = () => {
+  const projectId = elements.emailProjectSelect?.value || "inbox";
+  refreshEmailSubProjectControls(projectId);
 };
 
 const handleEmailDepartmentChange = () => {
@@ -7619,6 +7637,7 @@ const registerEventListeners = () => {
   });
   elements.meetingForm?.addEventListener("submit", handleMeetingFormSubmit);
   elements.meetingForm?.addEventListener("click", handleMeetingFormClick);
+  elements.meetingProjectSelect?.addEventListener("change", handleMeetingProjectChange);
   elements.meetingActionList?.addEventListener("change", handleMeetingActionListChange);
   elements.meetingActionList?.addEventListener("input", handleMeetingActionListInput);
   elements.meetingActionInput?.addEventListener("keydown", handleMeetingActionInputKeydown);
@@ -7628,6 +7647,7 @@ const registerEventListeners = () => {
   });
   elements.emailForm?.addEventListener("submit", handleEmailFormSubmit);
   elements.emailForm?.addEventListener("click", handleEmailFormClick);
+  elements.emailProjectSelect?.addEventListener("change", handleEmailProjectChange);
   elements.emailDepartment?.addEventListener("change", handleEmailDepartmentChange);
   elements.emailThreadList?.addEventListener("change", handleEmailThreadListChange);
   elements.emailThreadList?.addEventListener("input", handleEmailThreadListInput);
