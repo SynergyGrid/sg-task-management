@@ -99,10 +99,14 @@ if (loginPassword && sharedPassword) {
 loginForm?.addEventListener('submit', attemptSignIn);
 loginSubmit?.addEventListener('click', attemptSignIn);
 
-if (auth.currentUser) {
-  // A cached session exists; launch immediately.
-  launchWorkspace().catch((error) => {
-    console.error('Unable to initialize workspace', error);
-    setStatus('Unable to open workspace right now. Please refresh.', 'error');
+authReadyPromise
+  .then(() => {
+    launchWorkspace().catch((error) => {
+      console.error('Unable to initialize workspace', error);
+      setStatus('Unable to open workspace right now. Please refresh.', 'error');
+    });
+  })
+  .catch((error) => {
+    console.error('Firebase initialization failed', error);
+    setStatus('Unable to connect to Firebase right now.', 'error');
   });
-}
