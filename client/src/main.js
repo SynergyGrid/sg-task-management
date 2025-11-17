@@ -11,6 +11,23 @@ const loginPassword = document.getElementById('loginPassword');
 const loginSubmit = document.getElementById('loginSubmit');
 const loginStatus = document.getElementById('loginStatus');
 
+let loginOverlayVisible = false;
+
+const showLoginOverlay = () => {
+  if (!loginScreen || loginOverlayVisible) return;
+  loginScreen.classList.remove('hidden');
+  loginScreen.setAttribute('aria-hidden', 'false');
+  loginOverlayVisible = true;
+  loginEmail?.focus();
+};
+
+const hideLoginOverlay = () => {
+  if (!loginScreen) return;
+  loginScreen.classList.add('hidden');
+  loginScreen.setAttribute('aria-hidden', 'true');
+  loginOverlayVisible = false;
+};
+
 const authReadyPromise = new Promise((resolve, reject) => {
   const unsubscribe = onAuthStateChanged(
     auth,
@@ -19,6 +36,9 @@ const authReadyPromise = new Promise((resolve, reject) => {
         window.currentUser = user;
         unsubscribe();
         resolve(user);
+      } else {
+        showLoginOverlay();
+        setStatus('');
       }
     },
     (error) => {
@@ -76,8 +96,9 @@ const attemptSignIn = async (event) => {
     return;
   }
 
+  showLoginOverlay();
   loginSubmit.disabled = true;
-  setStatus('Connecting…');
+  setStatus('Connecting...');
   try {
     await signInWithEmailAndPassword(auth, email, password);
     await launchWorkspace();
