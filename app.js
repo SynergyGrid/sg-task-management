@@ -728,7 +728,18 @@ const defaultSettings = () => ({
       optional: "#6366f1",
     },
   },
+  display: {
+    fontScale: 1,
+  },
 });
+
+const clampFontScale = (value) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 1;
+  if (numeric < 0.9) return 0.9;
+  if (numeric > 1.15) return 1.15;
+  return numeric;
+};
 
 const normaliseSettings = (settings = {}) => {
   const defaults = defaultSettings();
@@ -747,6 +758,9 @@ const normaliseSettings = (settings = {}) => {
         low: settings.theme?.priorities?.low || defaults.theme.priorities.low,
         optional: settings.theme?.priorities?.optional || defaults.theme.priorities.optional,
       },
+    },
+    display: {
+      fontScale: clampFontScale(settings.display?.fontScale || defaults.display.fontScale),
     },
   };
   return merged;
@@ -2563,7 +2577,7 @@ const updateDashboardMetrics = () => {
 
 const applySettings = () => {
   state.settings = normaliseSettings(state.settings);
-  const { profile, theme } = state.settings;
+  const { profile, theme, display } = state.settings;
   if (elements.profileNameDisplay) {
     elements.profileNameDisplay.textContent = profile.name;
   }
@@ -2583,6 +2597,8 @@ const applySettings = () => {
   if (priorities.medium) root.style.setProperty('--priority-medium', priorities.medium);
   if (priorities.low) root.style.setProperty('--priority-low', priorities.low);
   if (priorities.optional) root.style.setProperty('--priority-optional', priorities.optional);
+  const fontScale = clampFontScale(display?.fontScale || 1);
+  root.style.setProperty('--workspace-font-scale', fontScale.toString());
 };
 
 const renderSidebar = () => {

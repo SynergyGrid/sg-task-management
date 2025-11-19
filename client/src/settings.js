@@ -15,6 +15,16 @@ const STORAGE_KEYS = {
 const WORKSPACE_ID = import.meta.env.VITE_FIREBASE_WORKSPACE_ID ?? 'default';
 const workspaceRef = doc(db, 'workspaces', WORKSPACE_ID);
 
+const FONT_SCALE_MIN = 0.9;
+const FONT_SCALE_MAX = 1.15;
+const clampFontScale = (value) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 1;
+  if (numeric < FONT_SCALE_MIN) return FONT_SCALE_MIN;
+  if (numeric > FONT_SCALE_MAX) return FONT_SCALE_MAX;
+  return numeric;
+};
+
 const defaultSettings = () => ({
   profile: {
     name: "Sarah Chen",
@@ -30,6 +40,9 @@ const defaultSettings = () => ({
       low: "#10b981",
       optional: "#6366f1",
     },
+  },
+  display: {
+    fontScale: 1,
   },
 });
 
@@ -50,6 +63,9 @@ const normaliseSettings = (settings = {}) => {
         low: settings.theme?.priorities?.low || defaults.theme.priorities.low,
         optional: settings.theme?.priorities?.optional || defaults.theme.priorities.optional,
       },
+    },
+    display: {
+      fontScale: clampFontScale(settings.display?.fontScale || defaults.display.fontScale),
     },
   };
 };
@@ -224,6 +240,8 @@ const elements = {
   departmentForm: document.getElementById("settingsDepartmentForm"),
   departmentError: document.querySelector('[data-department-error]'),
   exportWorkspace: document.getElementById("exportWorkspace"),
+  fontScale: document.getElementById("fontScale"),
+  fontScaleValue: document.getElementById("fontScaleValue"),
 };
 
 let teamMembers = [];
@@ -236,13 +254,33 @@ const applyProfilePreview = (settings) => {
   elements.profilePreviewAvatar.src = settings.profile.photo;
 };
 
+const applyFontScalePreview = (settings) => {
+  const scale = clampFontScale(settings.display?.fontScale || 1);
+  document.documentElement.style.setProperty("--workspace-font-scale", scale.toString());
+  const percent = Math.round(scale * 100);
+  if (elements.fontScaleValue) {
+    elements.fontScaleValue.textContent = `${percent}%`;
+  }
+  if (elements.fontScale && Number(elements.fontScale.value) !== percent) {
+    elements.fontScale.value = percent;
+  }
+};
+
 const populateForm = (settings) => {
   if (elements.profileName) elements.profileName.value = settings.profile.name;
   if (elements.profilePhoto) elements.profilePhoto.value = settings.profile.photo;
+  if (elements.fontScale) {
+    const percent = Math.round((settings.display?.fontScale || 1) * 100);
+    elements.fontScale.value = percent;
+    if (elements.fontScaleValue) {
+      elements.fontScaleValue.textContent = `${percent}%`;
+    }
+  }
 };
 
 const updatePreview = () => {
   applyProfilePreview(draft);
+  applyFontScalePreview(draft);
 };
 
 const handleInputChange = (event) => {
@@ -260,6 +298,15 @@ const handleInputChange = (event) => {
         profile: { ...draft.profile, photo: value },
       };
       break;
+    case "fontScale": {
+      const percent = Number(value) || 100;
+      const scale = clampFontScale(percent / 100);
+      draft = {
+        ...draft,
+        display: { ...draft.display, fontScale: scale },
+      };
+      break;
+    }
     default:
       break;
   }
