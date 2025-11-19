@@ -4044,11 +4044,16 @@ const prepareMeetingDialog = (projectId, task = null) => {
   const form = elements.meetingForm;
   if (!form) return;
   form.reset();
-  const project = getProjectById(projectId);
+  const resolvedProjectId = projectId || "inbox";
+  const project = getProjectById(resolvedProjectId);
   if (elements.meetingProjectLabel) {
     elements.meetingProjectLabel.textContent = project ? project.name : "Inbox";
   }
-  form.elements.projectId.value = projectId || "inbox";
+  form.elements.projectId.value = resolvedProjectId;
+  if (form.elements.sectionId) {
+    const sectionValue = task?.sectionId || getDefaultSectionId(resolvedProjectId);
+    populateSectionOptions(form.elements.sectionId, resolvedProjectId, sectionValue);
+  }
   if (elements.meetingDepartment) {
     populateDepartmentOptions(elements.meetingDepartment, task?.departmentId || "");
   }
@@ -4162,7 +4167,7 @@ const commitMeetingForm = ({ allowCreate = false } = {}) => {
 
   const projectId = form.elements.projectId.value || "inbox";
   ensureSectionForProject(projectId);
-  const sectionId = getDefaultSectionId(projectId);
+  const sectionId = form.elements.sectionId?.value || getDefaultSectionId(projectId);
   const links = collectLinks(elements.meetingLinksList);
   const existing = state.tasks.find((task) => task.id === state.editingMeetingId);
   const metadata =
@@ -4282,11 +4287,16 @@ const prepareEmailDialog = (projectId, task = null) => {
   const form = elements.emailForm;
   if (!form) return;
   form.reset();
-  const project = getProjectById(projectId);
+  const resolvedProjectId = projectId || "inbox";
+  const project = getProjectById(resolvedProjectId);
   if (elements.emailProjectLabel) {
     elements.emailProjectLabel.textContent = project ? project.name : "Inbox";
   }
-  form.elements.projectId.value = projectId || "inbox";
+  form.elements.projectId.value = resolvedProjectId;
+  if (form.elements.sectionId) {
+    const sectionValue = task?.sectionId || getDefaultSectionId(resolvedProjectId);
+    populateSectionOptions(form.elements.sectionId, resolvedProjectId, sectionValue);
+  }
   if (elements.emailDepartment) {
     populateDepartmentOptions(elements.emailDepartment, task?.departmentId || "");
   }
@@ -4398,7 +4408,7 @@ const commitEmailForm = ({ allowCreate = false } = {}) => {
 
   const projectId = form.elements.projectId.value || "inbox";
   ensureSectionForProject(projectId);
-  const sectionId = getDefaultSectionId(projectId);
+  const sectionId = form.elements.sectionId?.value || getDefaultSectionId(projectId);
   const links = collectLinks(elements.emailLinksList);
   const existing = state.tasks.find((task) => task.id === state.editingEmailId);
   const metadata =

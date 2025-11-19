@@ -644,6 +644,9 @@ const state = {
     stats: null,
     companyId: DEFAULT_COMPANY.id,
     projectId: null,
+    subProjectId: "",
+    sectionId: "",
+    departmentId: "",
   },
   imports: {
     whatsapp: {},
@@ -725,6 +728,7 @@ const elements = {
   meetingForm: document.getElementById("meetingForm"),
   meetingProjectSelect: document.querySelector('#meetingForm select[name="projectId"]'),
   meetingSubProjectSelect: document.querySelector('#meetingForm select[name="subProjectId"]'),
+  meetingSectionSelect: document.querySelector('#meetingForm select[name="sectionId"]'),
   meetingDialogStatus: document.querySelector("[data-meeting-status]"),
   meetingDialogToggle: document.querySelector('[data-action="meeting-toggle-completion"]'),
   meetingDeleteButton: document.querySelector('[data-action="delete-meeting"]'),
@@ -739,6 +743,7 @@ const elements = {
   emailForm: document.getElementById("emailForm"),
   emailProjectSelect: document.querySelector('#emailForm select[name="projectId"]'),
   emailSubProjectSelect: document.querySelector('#emailForm select[name="subProjectId"]'),
+  emailSectionSelect: document.querySelector('#emailForm select[name="sectionId"]'),
   emailDialogStatus: document.querySelector("[data-email-status]"),
   emailDialogToggle: document.querySelector('[data-action="email-toggle-completion"]'),
   emailDeleteButton: document.querySelector('[data-action="delete-email"]'),
@@ -775,6 +780,9 @@ const elements = {
   whatsappError: document.getElementById("whatsappError"),
   whatsappModel: document.getElementById("whatsappModel"),
   whatsappProject: document.getElementById("whatsappProject"),
+  whatsappSubProject: document.getElementById("whatsappSubProject"),
+  whatsappSection: document.getElementById("whatsappSection"),
+  whatsappDepartment: document.getElementById("whatsappDepartment"),
   whatsappCompany: document.querySelector("[data-whatsapp-company]"),
 };
 
@@ -5046,6 +5054,13 @@ const prepareMeetingDialog = (projectId, task = null) => {
   const targetProjectId = projectId || "inbox";
   form.elements.projectId.value = targetProjectId;
   refreshMeetingSubProjectControls(targetProjectId, task?.subProjectId ?? "");
+  if (elements.meetingSectionSelect) {
+    const sectionValue = task?.sectionId || getDefaultSectionId(targetProjectId);
+    populateSectionOptions(elements.meetingSectionSelect, targetProjectId, sectionValue);
+    if (form.elements.sectionId) {
+      form.elements.sectionId.value = elements.meetingSectionSelect.value || sectionValue;
+    }
+  }
   if (elements.meetingDepartment) {
     populateDepartmentOptions(elements.meetingDepartment, task?.departmentId || "");
   }
@@ -5171,7 +5186,7 @@ const commitMeetingForm = ({ allowCreate = false } = {}) => {
 
   const projectId = form.elements.projectId.value || "inbox";
   ensureSectionForProject(projectId);
-  const sectionId = getDefaultSectionId(projectId);
+  const sectionId = form.elements.sectionId?.value || getDefaultSectionId(projectId);
   const subProjectId = form.elements.subProjectId?.value || "";
   if (!subProjectId) {
     if (elements.meetingError) elements.meetingError.textContent = "Select a sub-project.";
@@ -5311,6 +5326,13 @@ const prepareEmailDialog = (projectId, task = null) => {
   const targetProjectId = projectId || "inbox";
   form.elements.projectId.value = targetProjectId;
   refreshEmailSubProjectControls(targetProjectId, task?.subProjectId ?? "");
+  if (elements.emailSectionSelect) {
+    const sectionValue = task?.sectionId || getDefaultSectionId(targetProjectId);
+    populateSectionOptions(elements.emailSectionSelect, targetProjectId, sectionValue);
+    if (form.elements.sectionId) {
+      form.elements.sectionId.value = elements.emailSectionSelect.value || sectionValue;
+    }
+  }
   if (elements.emailDepartment) {
     populateDepartmentOptions(elements.emailDepartment, task?.departmentId || "");
   }
@@ -5434,7 +5456,7 @@ const commitEmailForm = ({ allowCreate = false } = {}) => {
 
   const projectId = form.elements.projectId.value || "inbox";
   ensureSectionForProject(projectId);
-  const sectionId = getDefaultSectionId(projectId);
+  const sectionId = form.elements.sectionId?.value || getDefaultSectionId(projectId);
   const subProjectId = form.elements.subProjectId?.value || "";
   if (!subProjectId) {
     if (elements.emailError) {
@@ -6034,6 +6056,9 @@ const handleDialogDepartmentChange = () => {
 const handleMeetingProjectChange = () => {
   const projectId = elements.meetingProjectSelect?.value || "inbox";
   refreshMeetingSubProjectControls(projectId);
+  if (elements.meetingSectionSelect) {
+    populateSectionOptions(elements.meetingSectionSelect, projectId);
+  }
 };
 
 const handleQuickAddProjectChange = () => {
@@ -6055,6 +6080,9 @@ const handleMeetingDepartmentChange = () => {
 const handleEmailProjectChange = () => {
   const projectId = elements.emailProjectSelect?.value || "inbox";
   refreshEmailSubProjectControls(projectId);
+  if (elements.emailSectionSelect) {
+    populateSectionOptions(elements.emailSectionSelect, projectId);
+  }
 };
 
 const handleEmailDepartmentChange = () => {
@@ -6786,9 +6814,19 @@ const getWhatsappDestination = () => {
   if (!project) {
     throw new Error("We couldn't prepare a project for WhatsApp tasks. Try again.");
   }
-  const section = ensureWhatsappSectionForProject(project.id);
+  let section = null;
+  if (state.importJob.sectionId) {
+    const candidate = getSectionById(state.importJob.sectionId);
+    if (candidate && candidate.projectId === project.id) {
+      section = candidate;
+    }
+  }
   if (!section) {
-    throw new Error("We couldn't prepare a section for WhatsApp tasks. Try again.");
+    section = ensureWhatsappSectionForProject(project.id);
+    if (!section) {
+      throw new Error("We couldn't prepare a section for WhatsApp tasks. Try again.");
+    }
+    state.importJob.sectionId = section.id;
   }
 
   state.importJob.companyId = company.id;
@@ -7018,6 +7056,8 @@ const resetWhatsappImport = (companyId = state.activeCompanyId) => {
   } else {
     projectId = null;
   }
+  const defaultSectionId =
+    projectId && resolvedCompanyId ? ensureWhatsappSectionForProject(projectId)?.id ?? "" : "";
   state.importJob = {
     file: null,
     status: "idle",
@@ -7027,6 +7067,9 @@ const resetWhatsappImport = (companyId = state.activeCompanyId) => {
     provider,
     companyId: resolvedCompanyId,
     projectId,
+    subProjectId: "",
+    sectionId: defaultSectionId,
+    departmentId: "",
   };
   if (elements.whatsappForm) {
     elements.whatsappForm.reset();
@@ -7120,6 +7163,37 @@ const renderWhatsappImport = () => {
       select.disabled = true;
     }
   }
+  if (elements.whatsappSubProject) {
+    if (state.importJob.projectId) {
+      populateSubProjectOptions(
+        elements.whatsappSubProject,
+        state.importJob.projectId,
+        state.importJob.subProjectId,
+      );
+      elements.whatsappSubProject.disabled = status === "processing";
+    } else {
+      elements.whatsappSubProject.replaceChildren();
+      elements.whatsappSubProject.disabled = true;
+      state.importJob.subProjectId = "";
+    }
+  }
+  if (elements.whatsappSection) {
+    if (state.importJob.projectId) {
+      const preferredSection =
+        state.importJob.sectionId || getDefaultSectionId(state.importJob.projectId);
+      populateSectionOptions(elements.whatsappSection, state.importJob.projectId, preferredSection);
+      state.importJob.sectionId = elements.whatsappSection.value || preferredSection || "";
+      elements.whatsappSection.disabled = status === "processing";
+    } else {
+      elements.whatsappSection.replaceChildren();
+      elements.whatsappSection.disabled = true;
+      state.importJob.sectionId = "";
+    }
+  }
+  if (elements.whatsappDepartment) {
+    populateDepartmentOptions(elements.whatsappDepartment, state.importJob.departmentId || "");
+    elements.whatsappDepartment.disabled = status === "processing";
+  }
   if (elements.whatsappFile) {
     elements.whatsappFile.disabled = status === "processing";
   }
@@ -7174,10 +7248,27 @@ const handleWhatsappProjectChange = (event) => {
   const value = event.target?.value?.trim();
   const companyId = state.importJob.companyId;
   state.importJob.projectId = value || null;
+  state.importJob.subProjectId = "";
+  state.importJob.sectionId =
+    state.importJob.projectId && companyId
+      ? ensureWhatsappSectionForProject(state.importJob.projectId)?.id ?? ""
+      : "";
   if (companyId && value) {
     state.companyRecents[companyId] = value;
   }
   renderWhatsappImport();
+};
+
+const handleWhatsappSubProjectChange = (event) => {
+  state.importJob.subProjectId = event.target?.value?.trim() || "";
+};
+
+const handleWhatsappSectionChange = (event) => {
+  state.importJob.sectionId = event.target?.value?.trim() || "";
+};
+
+const handleWhatsappDepartmentChange = (event) => {
+  state.importJob.departmentId = event.target?.value?.trim() || "";
 };
 
 const processWhatsappImport = async () => {
@@ -7187,6 +7278,13 @@ const processWhatsappImport = async () => {
   }
 
   const { company, project, section } = getWhatsappDestination();
+  const usableSubProject =
+    state.importJob.subProjectId && getSubProjectById(state.importJob.subProjectId);
+  const subProjectId =
+    usableSubProject && usableSubProject.projectId === project.id ? usableSubProject.id : "";
+  const usableDepartment =
+    state.importJob.departmentId && getDepartmentById(state.importJob.departmentId);
+  const departmentId = usableDepartment ? usableDepartment.id : "";
   const selectedModel = (state.importJob.model || OPENROUTER_MODEL).trim() || OPENROUTER_MODEL;
   const { chatName, messages } = await readWhatsappExport(file);
   if (!messages.length) {
@@ -7297,8 +7395,9 @@ const processWhatsappImport = async () => {
       source: "whatsapp",
       projectId: project.id,
       sectionId: section.id,
+      subProjectId,
       assigneeId,
-      departmentId: "",
+      departmentId,
       priority,
       dueDate: dueDate || "",
       createdAt,
@@ -7689,6 +7788,9 @@ const registerEventListeners = () => {
   elements.whatsappForm?.addEventListener("submit", handleWhatsappSubmit);
   elements.whatsappModel?.addEventListener("change", handleWhatsappModelChange);
   elements.whatsappProject?.addEventListener("change", handleWhatsappProjectChange);
+  elements.whatsappSubProject?.addEventListener("change", handleWhatsappSubProjectChange);
+  elements.whatsappSection?.addEventListener("change", handleWhatsappSectionChange);
+  elements.whatsappDepartment?.addEventListener("change", handleWhatsappDepartmentChange);
   elements.whatsappForm?.addEventListener("click", handleWhatsappDialogClick);
   elements.whatsappFile?.addEventListener("change", handleWhatsappFileChange);
   elements.whatsappDialog?.addEventListener("cancel", (event) => {

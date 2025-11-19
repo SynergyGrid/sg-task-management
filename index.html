@@ -551,10 +551,20 @@
             <select name="assignee" class="field-input"></select>
           </label>
         </div>
-        <label class="form-field dialog-full">
-          <span class="field-label">Department</span>
-          <select name="department" class="field-input"></select>
-        </label>
+        <div class="dialog-row dialog-row--thirds dialog-full">
+          <label class="form-field">
+            <span class="field-label">Sub-project</span>
+            <select name="subProjectId" class="field-input" required></select>
+          </label>
+          <label class="form-field">
+            <span class="field-label">Section</span>
+            <select name="sectionId" class="field-input"></select>
+          </label>
+          <label class="form-field">
+            <span class="field-label">Department</span>
+            <select name="department" class="field-input"></select>
+          </label>
+        </div>
         <label class="form-field dialog-full">
           <span class="field-label">Meeting type</span>
           <select name="meetingType" class="field-input">
@@ -565,10 +575,7 @@
             <option>In Person</option>
           </select>
         </label>
-        <label class="form-field dialog-full">
-          <span class="field-label">Sub-project</span>
-          <select name="subProjectId" class="field-input" required></select>
-        </label>
+        <p class="form-error" data-meeting-error></p>
         <p class="form-error" data-meeting-error></p>
       </div>
       <footer class="modal-footer">
@@ -644,10 +651,20 @@
             <select name="assignee" class="field-input"></select>
           </label>
         </div>
-        <label class="form-field dialog-full">
-          <span class="field-label">Department</span>
-          <select name="department" class="field-input"></select>
-        </label>
+        <div class="dialog-row dialog-row--thirds dialog-full">
+          <label class="form-field">
+            <span class="field-label">Sub-project</span>
+            <select name="subProjectId" class="field-input" required></select>
+          </label>
+          <label class="form-field">
+            <span class="field-label">Section</span>
+            <select name="sectionId" class="field-input"></select>
+          </label>
+          <label class="form-field">
+            <span class="field-label">Department</span>
+            <select name="department" class="field-input"></select>
+          </label>
+        </div>
         <label class="form-field dialog-full">
           <span class="field-label">Status</span>
           <select name="status" class="field-input">
@@ -660,10 +677,6 @@
         <label class="form-field dialog-full">
           <span class="field-label">Email address</span>
           <input type="email" name="emailAddress" class="field-input" placeholder="team@company.com" />
-        </label>
-        <label class="form-field dialog-full">
-          <span class="field-label">Sub-project</span>
-          <select name="subProjectId" class="field-input" required></select>
         </label>
         <p class="form-error" data-email-error></p>
       </div>

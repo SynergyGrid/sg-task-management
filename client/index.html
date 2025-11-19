@@ -669,10 +669,20 @@
             <select name="assignee" class="field-input"></select>
           </label>
         </div>
-        <label class="form-field dialog-full">
-          <span class="field-label">Department</span>
-          <select name="department" class="field-input"></select>
-        </label>
+        <div class="dialog-row dialog-row--thirds dialog-full">
+          <label class="form-field">
+            <span class="field-label">Sub-project</span>
+            <select name="subProjectId" class="field-input" required></select>
+          </label>
+          <label class="form-field">
+            <span class="field-label">Section</span>
+            <select name="sectionId" class="field-input"></select>
+          </label>
+          <label class="form-field">
+            <span class="field-label">Department</span>
+            <select name="department" class="field-input"></select>
+          </label>
+        </div>
         <label class="form-field dialog-full">
           <span class="field-label">Meeting type</span>
           <select name="meetingType" class="field-input">
@@ -682,10 +692,6 @@
             <option>Zoom</option>
             <option>In Person</option>
           </select>
-        </label>
-        <label class="form-field dialog-full">
-          <span class="field-label">Sub-project</span>
-          <select name="subProjectId" class="field-input" required></select>
         </label>
         <p class="form-error" data-meeting-error></p>
       </div>
@@ -762,10 +768,20 @@
             <select name="assignee" class="field-input"></select>
           </label>
         </div>
-        <label class="form-field dialog-full">
-          <span class="field-label">Department</span>
-          <select name="department" class="field-input"></select>
-        </label>
+        <div class="dialog-row dialog-row--thirds dialog-full">
+          <label class="form-field">
+            <span class="field-label">Sub-project</span>
+            <select name="subProjectId" class="field-input" required></select>
+          </label>
+          <label class="form-field">
+            <span class="field-label">Section</span>
+            <select name="sectionId" class="field-input"></select>
+          </label>
+          <label class="form-field">
+            <span class="field-label">Department</span>
+            <select name="department" class="field-input"></select>
+          </label>
+        </div>
         <label class="form-field dialog-full">
           <span class="field-label">Status</span>
           <select name="status" class="field-input">
@@ -778,10 +794,6 @@
         <label class="form-field dialog-full">
           <span class="field-label">Email address</span>
           <input type="email" name="emailAddress" class="field-input" placeholder="team@company.com" />
-        </label>
-        <label class="form-field dialog-full">
-          <span class="field-label">Sub-project</span>
-          <select name="subProjectId" class="field-input" required></select>
         </label>
         <p class="form-error" data-email-error></p>
       </div>
@@ -800,7 +812,7 @@
         <h2 class="text-lg font-semibold text-slate-900">Import WhatsApp action items</h2>
         <button type="button" class="ghost-button small" data-action="cancel-whatsapp">Close</button>
       </header>
-      <div class="modal-body space-y-4">
+      <div class="modal-body dialog-grid">
         <p class="text-sm text-slate-600">
           Upload a WhatsApp chat export (<code>.zip</code> or <code>.txt</code>). Only the last 30 days are processed,
           and messages older than the last import are skipped automatically.
@@ -811,6 +823,20 @@
           <select id="whatsappProject" class="field-input"></select>
           <small class="text-xs text-slate-500">Tasks are added to the “WhatsApp Tasks” section inside this project.</small>
         </label>
+        <div class="dialog-row dialog-row--thirds dialog-full">
+          <label class="form-field">
+            <span class="field-label">Sub-project</span>
+            <select id="whatsappSubProject" class="field-input"></select>
+          </label>
+          <label class="form-field">
+            <span class="field-label">Section</span>
+            <select id="whatsappSection" class="field-input"></select>
+          </label>
+          <label class="form-field">
+            <span class="field-label">Department</span>
+            <select id="whatsappDepartment" class="field-input"></select>
+          </label>
+        </div>
         <label class="form-field">
           <span class="field-label">Chat export</span>
           <input id="whatsappFile" type="file" name="whatsappFile" accept=".zip,.txt" required class="field-input" />
