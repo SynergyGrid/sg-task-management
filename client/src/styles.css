@@ -1015,6 +1015,10 @@ body {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.dialog-row--halves {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 @media (min-width: 768px) {
   .dialog-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1023,6 +1027,10 @@ body {
 
   .dialog-row--thirds {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .dialog-row--halves {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
