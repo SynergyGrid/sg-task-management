@@ -535,7 +535,7 @@
         <h2 class="text-lg font-semibold text-slate-900">Edit company</h2>
         <button type="button" class="ghost-button small" data-action="close-company">Close</button>
       </header>
-      <div class="modal-body space-y-4">
+      <div class="modal-body dialog-grid">
         <label class="form-field">
           <span class="field-label">Company name</span>
           <input id="companyName" name="companyName" type="text" placeholder="Company name" required class="field-input" />
@@ -599,15 +599,14 @@
       </header>
       <div class="modal-body space-y-4">
         <label class="form-field">
-          <span class="field-label">Project</span>
-          <select name="projectId" class="field-input"></select>
-        </label>
-
-        <label class="form-field">
           <span class="field-label">Title</span>
           <input type="text" name="title" required class="field-input" placeholder="Sprint planning sync" />
         </label>
         <label class="form-field">
+          <span class="field-label">Project</span>
+          <select name="projectId" class="field-input"></select>
+        </label>
+        <label class="form-field dialog-full">
           <span class="field-label">Description</span>
           <textarea
             name="notes"
@@ -618,11 +617,11 @@
             data-autosize-default="72"
             data-rich-text="true"></textarea>
         </label>
-        <label class="checkbox-field">
+        <label class="checkbox-field dialog-full">
           <input type="checkbox" name="actionItems" />
           <span>Action items captured</span>
         </label>
-        <label class="form-field">
+        <label class="form-field dialog-full">
           <span class="field-label">Action items</span>
           <div class="field-group" data-meeting-action-items>
             <div class="action-items-list" data-meeting-action-list></div>
@@ -632,7 +631,7 @@
             </div>
           </div>
         </label>
-        <label class="form-field">
+        <label class="form-field dialog-full">
           <span class="field-label">Attendees</span>
           <textarea
             name="attendees"
@@ -642,14 +641,14 @@
             data-autosize-key="meeting-attendees"
             data-autosize-default="180"></textarea>
         </label>
-        <div class="field-group">
+        <div class="field-group dialog-full">
           <div class="flex items-center justify-between">
             <span class="field-label">Links</span>
             <button type="button" class="ghost-button small" data-action="meeting-add-link">Add link</button>
           </div>
           <ul class="link-list" data-meeting-links></ul>
         </div>
-        <div class="form-row">
+        <div class="form-row dialog-full">
           <label class="form-field">
             <span class="field-label">Date</span>
             <input type="date" name="date" class="field-input" />
@@ -666,7 +665,7 @@
             </select>
           </label>
         </div>
-        <div class="form-row">
+        <div class="form-row dialog-full">
           <label class="form-field">
             <span class="field-label">Department</span>
             <select name="department" class="field-input"></select>
@@ -676,7 +675,7 @@
             <select name="assignee" class="field-input"></select>
           </label>
         </div>
-        <label class="form-field">
+        <label class="form-field dialog-full">
           <span class="field-label">Meeting type</span>
           <select name="meetingType" class="field-input">
             <option value="">Select type</option>
@@ -686,7 +685,7 @@
             <option>In Person</option>
           </select>
         </label>
-        <label class="form-field">
+        <label class="form-field dialog-full">
           <span class="field-label">Sub-project</span>
           <select name="subProjectId" class="field-input" required></select>
         </label>
@@ -713,21 +712,21 @@
           <button type="button" class="ghost-button small" data-action="close-email">Close</button>
         </div>
       </header>
-      <div class="modal-body space-y-4">
-        <label class="form-field">
-          <span class="field-label">Project</span>
-          <select name="projectId" class="field-input"></select>
-        </label>
-
+      <div class="modal-body dialog-grid">
         <label class="form-field">
           <span class="field-label">Title</span>
           <input type="text" name="title" required class="field-input" placeholder="Client follow-up" />
         </label>
         <label class="form-field">
+          <span class="field-label">Project</span>
+          <select name="projectId" class="field-input"></select>
+        </label>
+
+        <label class="form-field dialog-full">
           <span class="field-label">Description</span>
           <textarea name="notes" rows="3" class="field-input" placeholder="Summary, next steps, context" data-autosize-key="email-notes" data-autosize-default="72" data-rich-text="true"></textarea>
         </label>
-        <label class="form-field">
+        <label class="form-field dialog-full">
           <span class="field-label">Thread messages</span>
           <div class="field-group" data-email-thread>
             <div class="thread-message-list" data-email-thread-list></div>
@@ -737,14 +736,14 @@
             </div>
           </div>
         </label>
-        <div class="field-group">
+        <div class="field-group dialog-full">
           <div class="flex items-center justify-between">
             <span class="field-label">Links</span>
             <button type="button" class="ghost-button small" data-action="email-add-link">Add link</button>
           </div>
           <ul class="link-list" data-email-links></ul>
         </div>
-        <div class="form-row">
+        <div class="form-row dialog-full">
           <label class="form-field">
             <span class="field-label">Date</span>
             <input type="date" name="date" class="field-input" />
@@ -761,7 +760,7 @@
             </select>
           </label>
         </div>
-        <div class="form-row">
+        <div class="form-row dialog-full">
           <label class="form-field">
             <span class="field-label">Department</span>
             <select name="department" class="field-input"></select>
@@ -771,7 +770,7 @@
             <select name="assignee" class="field-input"></select>
           </label>
         </div>
-        <label class="form-field">
+        <label class="form-field dialog-full">
           <span class="field-label">Status</span>
           <select name="status" class="field-input">
             <option value="Pending">Pending</option>
@@ -780,11 +779,11 @@
             <option value="Updates">Updates</option>
           </select>
         </label>
-        <label class="form-field">
+        <label class="form-field dialog-full">
           <span class="field-label">Email address</span>
           <input type="email" name="emailAddress" class="field-input" placeholder="team@company.com" />
         </label>
-        <label class="form-field">
+        <label class="form-field dialog-full">
           <span class="field-label">Sub-project</span>
           <select name="subProjectId" class="field-input" required></select>
         </label>

@@ -470,36 +470,67 @@
   <dialog id="meetingDialog" class="modal">
     <form id="meetingForm" method="dialog" class="modal-card max-w-2xl" novalidate data-resizable="true">
       <header class="modal-header">
-        <h2 class="text-lg font-semibold text-slate-900">Log meeting</h2>
-        <button type="button" class="ghost-button small" data-action="close-meeting">Close</button>
+        <div>
+          <h2 class="text-lg font-semibold text-slate-900">Log meeting</h2>
+          <p class="modal-subtitle text-xs text-slate-500" data-meeting-status></p>
+        </div>
+        <div class="modal-header__actions">
+          <button type="button" class="ghost-button small" data-action="meeting-toggle-completion" hidden>Mark completed</button>
+          <button type="button" class="ghost-button small" data-action="close-meeting">Close</button>
+        </div>
       </header>
       <div class="modal-body space-y-4">
-        <p class="text-sm text-slate-500" data-meeting-project></p>
-        <input type="hidden" name="projectId" />
         <label class="form-field">
           <span class="field-label">Title</span>
           <input type="text" name="title" required class="field-input" placeholder="Sprint planning sync" />
         </label>
         <label class="form-field">
-          <span class="field-label">Description</span>
-          <textarea name="notes" rows="3" class="field-input" placeholder="Agenda, context and decisions"></textarea>
+          <span class="field-label">Project</span>
+          <select name="projectId" class="field-input"></select>
         </label>
-        <label class="checkbox-field">
+        <label class="form-field dialog-full">
+          <span class="field-label">Description</span>
+          <textarea
+            name="notes"
+            rows="3"
+            class="field-input"
+            placeholder="Agenda, context and decisions"
+            data-autosize-key="meeting-notes"
+            data-autosize-default="72"
+            data-rich-text="true"></textarea>
+        </label>
+        <label class="checkbox-field dialog-full">
           <input type="checkbox" name="actionItems" />
           <span>Action items captured</span>
         </label>
-        <label class="form-field">
-          <span class="field-label">Attendees</span>
-          <textarea name="attendees" rows="2" class="field-input" placeholder="Alex, Jamie, product squad"></textarea>
+        <label class="form-field dialog-full">
+          <span class="field-label">Action items</span>
+          <div class="field-group" data-meeting-action-items>
+            <div class="action-items-list" data-meeting-action-list></div>
+            <div class="flex items-center gap-2">
+              <input type="text" class="field-input flex-1" placeholder="Add action item and press Enter" data-meeting-action-input />
+              <button type="button" class="ghost-button small" data-action="meeting-add-action">Add</button>
+            </div>
+          </div>
         </label>
-        <div class="field-group">
+        <label class="form-field dialog-full">
+          <span class="field-label">Attendees</span>
+          <textarea
+            name="attendees"
+            rows="2"
+            class="field-input"
+            placeholder="Alex, Jamie, product squad"
+            data-autosize-key="meeting-attendees"
+            data-autosize-default="180"></textarea>
+        </label>
+        <div class="field-group dialog-full">
           <div class="flex items-center justify-between">
             <span class="field-label">Links</span>
             <button type="button" class="ghost-button small" data-action="meeting-add-link">Add link</button>
           </div>
           <ul class="link-list" data-meeting-links></ul>
         </div>
-        <div class="form-row">
+        <div class="form-row dialog-full">
           <label class="form-field">
             <span class="field-label">Date</span>
             <input type="date" name="date" class="field-input" />
@@ -516,7 +547,7 @@
             </select>
           </label>
         </div>
-        <div class="form-row">
+        <div class="form-row dialog-full">
           <label class="form-field">
             <span class="field-label">Department</span>
             <select name="department" class="field-input"></select>
@@ -526,7 +557,7 @@
             <select name="assignee" class="field-input"></select>
           </label>
         </div>
-        <label class="form-field">
+        <label class="form-field dialog-full">
           <span class="field-label">Meeting type</span>
           <select name="meetingType" class="field-input">
             <option value="">Select type</option>
@@ -535,6 +566,10 @@
             <option>Zoom</option>
             <option>In Person</option>
           </select>
+        </label>
+        <label class="form-field dialog-full">
+          <span class="field-label">Sub-project</span>
+          <select name="subProjectId" class="field-input" required></select>
         </label>
         <p class="form-error" data-meeting-error></p>
       </div>
@@ -550,21 +585,30 @@
   <dialog id="emailDialog" class="modal">
     <form id="emailForm" method="dialog" class="modal-card max-w-2xl" novalidate data-resizable="true">
       <header class="modal-header">
-        <h2 class="text-lg font-semibold text-slate-900">Log email</h2>
-        <button type="button" class="ghost-button small" data-action="close-email">Close</button>
+        <div>
+          <h2 class="text-lg font-semibold text-slate-900">Log email</h2>
+          <p class="modal-subtitle text-xs text-slate-500" data-email-status></p>
+        </div>
+        <div class="modal-header__actions">
+          <button type="button" class="ghost-button small" data-action="email-toggle-completion" hidden>Mark completed</button>
+          <button type="button" class="ghost-button small" data-action="close-email">Close</button>
+        </div>
       </header>
-      <div class="modal-body space-y-4">
-        <p class="text-sm text-slate-500" data-email-project></p>
-        <input type="hidden" name="projectId" />
+      <div class="modal-body dialog-grid">
         <label class="form-field">
           <span class="field-label">Title</span>
           <input type="text" name="title" required class="field-input" placeholder="Client follow-up" />
         </label>
         <label class="form-field">
-          <span class="field-label">Description</span>
-          <textarea name="notes" rows="3" class="field-input" placeholder="Key decisions, follow-ups, attachments"></textarea>
+          <span class="field-label">Project</span>
+          <select name="projectId" class="field-input"></select>
         </label>
-        <label class="form-field">
+
+        <label class="form-field dialog-full">
+          <span class="field-label">Description</span>
+          <textarea name="notes" rows="3" class="field-input" placeholder="Summary, next steps, context" data-autosize-key="email-notes" data-autosize-default="72" data-rich-text="true"></textarea>
+        </label>
+        <label class="form-field dialog-full">
           <span class="field-label">Thread messages</span>
           <div class="field-group" data-email-thread>
             <div class="thread-message-list" data-email-thread-list></div>
@@ -574,14 +618,14 @@
             </div>
           </div>
         </label>
-        <div class="field-group">
+        <div class="field-group dialog-full">
           <div class="flex items-center justify-between">
             <span class="field-label">Links</span>
             <button type="button" class="ghost-button small" data-action="email-add-link">Add link</button>
           </div>
           <ul class="link-list" data-email-links></ul>
         </div>
-        <div class="form-row">
+        <div class="form-row dialog-full">
           <label class="form-field">
             <span class="field-label">Date</span>
             <input type="date" name="date" class="field-input" />
@@ -598,7 +642,7 @@
             </select>
           </label>
         </div>
-        <div class="form-row">
+        <div class="form-row dialog-full">
           <label class="form-field">
             <span class="field-label">Department</span>
             <select name="department" class="field-input"></select>
@@ -608,18 +652,22 @@
             <select name="assignee" class="field-input"></select>
           </label>
         </div>
-        <label class="form-field">
+        <label class="form-field dialog-full">
           <span class="field-label">Status</span>
           <select name="status" class="field-input">
-            <option>Pending</option>
-            <option>Completed</option>
-            <option>In Progress</option>
-            <option>Updates</option>
+            <option value="Pending">Pending</option>
+            <option value="Completed">Completed</option>
+            <option value="In Progress">In Progress</option>
+            <option value="Updates">Updates</option>
           </select>
         </label>
-        <label class="form-field">
+        <label class="form-field dialog-full">
           <span class="field-label">Email address</span>
           <input type="email" name="emailAddress" class="field-input" placeholder="team@company.com" />
+        </label>
+        <label class="form-field dialog-full">
+          <span class="field-label">Sub-project</span>
+          <select name="subProjectId" class="field-input" required></select>
         </label>
         <p class="form-error" data-email-error></p>
       </div>
@@ -628,53 +676,6 @@
         <button type="button" class="ghost-button" data-action="close-email">Cancel</button>
         <button type="submit" class="btn-primary">Save email</button>
       </footer>
-    </form>
-  </dialog>
-  <!-- Members dialog -->
-  <dialog id="membersDialog" class="modal">
-    <form id="membersForm" method="dialog" class="modal-card max-w-xl">
-      <header class="modal-header">
-        <h2 class="text-lg font-semibold text-slate-900">Manage members</h2>
-        <button type="button" class="ghost-button small" data-action="close">Close</button>
-      </header>
-      <div class="modal-body manage-body">
-        <ul id="memberList" class="manage-list" aria-live="polite"></ul>
-        <div class="manage-form">
-          <label class="form-field">
-            <span class="field-label">Name</span>
-            <input type="text" name="memberName" placeholder="Full name" required class="field-input" />
-          </label>
-          <label class="form-field">
-            <span class="field-label">Department</span>
-            <select name="memberDepartment" class="field-input"></select>
-          </label>
-          <div class="form-actions">
-            <button class="btn-primary" type="submit" data-action="add-member">Add member</button>
-          </div>
-        </div>
-      </div>
-    </form>
-  </dialog>
-
-  <!-- Departments dialog -->
-  <dialog id="departmentsDialog" class="modal">
-    <form id="departmentsForm" method="dialog" class="modal-card max-w-lg">
-      <header class="modal-header">
-        <h2 class="text-lg font-semibold text-slate-900">Manage departments</h2>
-        <button type="button" class="ghost-button small" data-action="close">Close</button>
-      </header>
-      <div class="modal-body manage-body">
-        <ul id="departmentList" class="manage-list" aria-live="polite"></ul>
-        <div class="manage-form">
-          <label class="form-field">
-            <span class="field-label">Name</span>
-            <input type="text" name="departmentName" placeholder="Department name" required class="field-input" />
-          </label>
-          <div class="form-actions">
-            <button class="btn-primary" type="submit" data-action="add-department">Add department</button>
-          </div>
-        </div>
-      </div>
     </form>
   </dialog>
 
