@@ -782,19 +782,21 @@
             <select name="department" class="field-input"></select>
           </label>
         </div>
-        <label class="form-field dialog-full">
-          <span class="field-label">Status</span>
-          <select name="status" class="field-input">
-            <option value="Pending">Pending</option>
-            <option value="Completed">Completed</option>
-            <option value="In Progress">In Progress</option>
-            <option value="Updates">Updates</option>
-          </select>
-        </label>
-        <label class="form-field dialog-full">
-          <span class="field-label">Email address</span>
-          <input type="email" name="emailAddress" class="field-input" placeholder="team@company.com" />
-        </label>
+        <div class="dialog-row dialog-full">
+          <label class="form-field">
+            <span class="field-label">Email address</span>
+            <input type="email" name="emailAddress" class="field-input" placeholder="team@company.com" />
+          </label>
+          <label class="form-field">
+            <span class="field-label">Status</span>
+            <select name="status" class="field-input">
+              <option value="Pending">Pending</option>
+              <option value="Completed">Completed</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Updates">Updates</option>
+            </select>
+          </label>
+        </div>
         <p class="form-error" data-email-error></p>
       </div>
       <footer class="modal-footer">
