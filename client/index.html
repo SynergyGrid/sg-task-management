@@ -429,16 +429,16 @@
           <button type="button" class="ghost-button small" data-action="close">Close</button>
         </div>
       </header>
-      <div class="modal-body space-y-4">
-        <label class="form-field">
-          <span class="field-label">Project</span>
-          <select name="project" class="field-input"></select>
-        </label>
+      <div class="modal-body dialog-grid">
         <label class="form-field">
           <span class="field-label">Title</span>
           <input type="text" name="title" required maxlength="160" class="field-input" />
         </label>
         <label class="form-field">
+          <span class="field-label">Project</span>
+          <select name="project" class="field-input"></select>
+        </label>
+        <label class="form-field dialog-full">
           <span class="field-label">Description</span>
           <textarea
             name="description"
@@ -448,53 +448,49 @@
             data-autosize-default="72"
             data-rich-text="true"></textarea>
         </label>
-        <div class="field-group">
+        <div class="field-group dialog-full">
           <div class="flex items-center justify-between">
             <span class="field-label">Links</span>
             <button type="button" class="ghost-button small" data-action="dialog-add-link">Add link</button>
           </div>
           <ul class="link-list" data-dialog-links></ul>
         </div>
-        <div class="form-row">
-          <label class="form-field">
-            <span class="field-label">Due date</span>
-            <input type="date" name="dueDate" class="field-input" />
-          </label>
-          <label class="form-field">
-            <span class="field-label">Priority</span>
-            <select name="priority" class="field-input">
-              <option value="critical">Critical</option>
-              <option value="very-high">Very high</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-              <option value="optional">Optional</option>
-            </select>
-          </label>
-        </div>
-        <div class="form-row">
-          <label class="form-field">
-            <span class="field-label">Member</span>
-            <select name="assignee" class="field-input"></select>
-          </label>
-          <label class="form-field">
-            <span class="field-label">Department</span>
-            <select name="department" class="field-input"></select>
-          </label>
-        </div>
         <label class="form-field">
-          <span class="field-label">Section</span>
-          <select name="section" class="field-input"></select>
+          <span class="field-label">Priority</span>
+          <select name="priority" class="field-input">
+            <option value="critical">Critical</option>
+            <option value="very-high">Very high</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+            <option value="optional">Optional</option>
+          </select>
         </label>
         <label class="form-field">
-          <span class="field-label">Attachments</span>
-          <input type="file" name="attachments" multiple class="field-input" />
+          <span class="field-label">Due date</span>
+          <input type="date" name="dueDate" class="field-input" />
         </label>
-        <ul class="attachment-list" data-dialog-attachment-list></ul>
+        <label class="form-field">
+          <span class="field-label">Member</span>
+          <select name="assignee" class="field-input"></select>
+        </label>
+        <label class="form-field">
+          <span class="field-label">Department</span>
+          <select name="department" class="field-input"></select>
+        </label>
         <label class="form-field">
           <span class="field-label">Sub-project</span>
           <select name="subProject" class="field-input"></select>
         </label>
+        <label class="form-field">
+          <span class="field-label">Section</span>
+          <select name="section" class="field-input"></select>
+        </label>
+        <label class="form-field dialog-full">
+          <span class="field-label">Attachments</span>
+          <input type="file" name="attachments" multiple class="field-input" />
+        </label>
+        <ul class="attachment-list dialog-full" data-dialog-attachment-list></ul>
         <input type="checkbox" name="completed" hidden />
       </div>
       <footer class="modal-footer">

@@ -943,8 +943,8 @@ body {
 .modal-card {
   background: #ffffff;
   border-radius: 1.5rem;
-  width: min(780px, calc(100vw - 2rem));
-  max-width: calc(100vw - 1.5rem);
+  width: min(920px, calc(100vw - 2rem));
+  max-width: calc(100vw - 1.25rem);
   box-shadow: 0 35px 90px -40px rgba(15, 23, 42, 0.65);
   border: 1px solid rgba(148, 163, 184, 0.18);
   overflow: hidden;
@@ -954,8 +954,8 @@ body {
 .modal-card[data-resizable="true"] {
   resize: horizontal;
   overflow: auto;
-  min-width: 520px;
-  max-width: min(1100px, calc(100vw - 1.5rem));
+  min-width: 620px;
+  max-width: min(1200px, calc(100vw - 1rem));
 }
 
 .modal-card[data-resizable="true"]::after {
@@ -988,6 +988,23 @@ body {
 
 .modal-body {
   padding: 1.2rem 1.6rem;
+}
+
+.dialog-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem 1.25rem;
+}
+
+.dialog-grid .dialog-full {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 768px) {
+  .dialog-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.2rem 1.75rem;
+  }
 }
 
 .modal-header__actions {
