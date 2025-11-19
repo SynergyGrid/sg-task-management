@@ -1232,7 +1232,7 @@ const defaultSettings = () => ({
 const clampFontScale = (value) => {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return 1;
-  if (numeric < 0.9) return 0.9;
+  if (numeric < 0.8) return 0.8;
   if (numeric > 1.15) return 1.15;
   return numeric;
 };
@@ -7614,6 +7614,7 @@ const hydrateStateFromLocal = () => {
   state.tasks.forEach(ensureTaskDefaults);
 
   applyStoredPreferences();
+  applySettings();
 };
 
 const hydrateState = async () => {

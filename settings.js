@@ -15,7 +15,7 @@ const STORAGE_KEYS = {
 const WORKSPACE_ID = import.meta.env.VITE_FIREBASE_WORKSPACE_ID ?? 'default';
 const workspaceRef = doc(db, 'workspaces', WORKSPACE_ID);
 
-const FONT_SCALE_MIN = 0.9;
+const FONT_SCALE_MIN = 0.8;
 const FONT_SCALE_MAX = 1.15;
 const clampFontScale = (value) => {
   const numeric = Number(value);
